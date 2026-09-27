@@ -1,0 +1,21 @@
+[Unit]
+Description=SwitchNet Discord bot
+After=network-online.target switchnet-baas.service
+Wants=network-online.target
+# The bot keeps retrying: SwitchNet or Discord being briefly unreachable is
+# not a reason to stay down.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=switchnet
+Group=switchnet
+WorkingDirectory=/opt/switchnet-discord
+# SWITCHNET_DISCORD_TOKEN and SWITCHNET_BOT_API_TOKEN, mode 600, root-owned.
+EnvironmentFile=/etc/switchnet-discord.env
+ExecStart=/opt/switchnet-discord/switchnet-discord -config /opt/switchnet-discord/config.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

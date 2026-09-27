@@ -1,0 +1,20 @@
+# switchnet-discord configuration. Copy to config.yaml.
+#
+# Keep the two secrets out of this file: set them in the environment instead
+# (deploy/switchnet-discord.service reads /etc/switchnet-discord.env):
+#   SWITCHNET_DISCORD_TOKEN   the bot token from the Discord developer portal
+#   SWITCHNET_BOT_API_TOKEN   SwitchNet's baas.bot_api.token
+
+discord:
+  token: ""
+  # The servers the bot answers in. Commands are registered per server, and
+  # anything from elsewhere (including DMs) is ignored.
+  guild_ids: ["000000000000000000"]
+  # Optional: a role a member needs before /register works. Empty: anyone in
+  # the server can register.
+  register_role_id: ""
+
+switchnet:
+  # SwitchNet's baas.bot_api.listen. The bot runs on the same host.
+  api_url: "http://127.0.0.1:8096"
+  api_token: ""
