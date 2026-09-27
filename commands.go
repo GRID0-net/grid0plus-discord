@@ -31,6 +31,7 @@ const mintCooldown = 30 * time.Second
 
 var commands = []*discordgo.ApplicationCommand{
 	{Name: "register", Description: "Create your SwitchNet account (your login and password are shown only to you)"},
+	{Name: "link", Description: "Already have a SwitchNet login from before the bot? Connect it to your Discord"},
 	{Name: "reset-password", Description: "Get a new SwitchNet password (only you see it)"},
 	{Name: "whoami", Description: "Your SwitchNet account: friend code, consoles, friends"},
 	{Name: "fc", Description: "Show your SwitchNet friend code"},
@@ -70,6 +71,8 @@ func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 		b.onButton(s, i)
 	case discordgo.InteractionApplicationCommandAutocomplete:
 		b.onAutocomplete(s, i)
+	case discordgo.InteractionModalSubmit:
+		b.onLinkSubmit(s, i)
 	}
 }
 
@@ -84,6 +87,9 @@ func (r reply) text(msg string) {
 }
 
 func (r reply) edit(e *discordgo.WebhookEdit) {
+	// Names in answers are <@id> mentions for readability; nobody should be
+	// pinged because someone else ran /online.
+	e.AllowedMentions = &discordgo.MessageAllowedMentions{}
 	if _, err := r.s.InteractionResponseEdit(r.i.Interaction, e); err != nil {
 		slog.Warn("edit interaction response", "error", err)
 	}
@@ -91,6 +97,12 @@ func (r reply) edit(e *discordgo.WebhookEdit) {
 
 func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	name := i.ApplicationCommandData().Name
+	if name == "link" {
+		// A form, not command options: a password typed as an option would
+		// sit in the person's command history.
+		b.showLinkForm(s, i)
+		return
+	}
 	var flags discordgo.MessageFlags
 	if !commandsArePublic[name] {
 		flags = discordgo.MessageFlagsEphemeral
@@ -135,7 +147,10 @@ func (b *Bot) explain(r reply, err error) {
 		"not_registered":      "You don't have a SwitchNet account yet. Run `/register` first.",
 		"registration_closed": "Registration is closed right now. Ask the server admin.",
 		"already_registered":  "You already have a SwitchNet account. Lost your password? Run `/reset-password`.",
-		"username_taken":      "Your Discord username is already taken as a SwitchNet login. Ask the server admin.",
+		"username_taken":      "Your Discord username is already a SwitchNet login. If it's yours from before the bot, run `/link` instead.",
+		"bad_credentials":     "That login and password don't match. Check them and try again.",
+		"claimed":             "That account is already connected to another Discord account. Ask the server admin.",
+		"rate_limited":        "Too many tries. Wait a few minutes.",
 		"no_such_user":        "Nobody on SwitchNet matches that. They may need to `/register` first.",
 		"self":                "You can't add yourself.",
 		"refused":             "That person isn't accepting friend requests.",
@@ -329,6 +344,58 @@ func (b *Bot) fcPending(ctx context.Context, r reply, user *discordgo.User) {
 	r.edit(&discordgo.WebhookEdit{Content: &content, Components: &rows})
 }
 
+func (b *Bot) showLinkForm(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	input := func(id, label string) discordgo.MessageComponent {
+		return discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.TextInput{CustomID: id, Label: label, Style: discordgo.TextInputShort, Required: true, MaxLength: 256},
+		}}
+	}
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseModal,
+		Data: &discordgo.InteractionResponseData{
+			CustomID:   "link",
+			Title:      "Connect your SwitchNet login",
+			Components: []discordgo.MessageComponent{input("username", "SwitchNet login"), input("password", "Password")},
+		},
+	})
+	if err != nil {
+		b.log.Warn("show link form", "error", err)
+	}
+}
+
+func (b *Bot) onLinkSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ModalSubmitData()
+	if data.CustomID != "link" {
+		return
+	}
+	values := map[string]string{}
+	for _, row := range data.Components {
+		if ar, ok := row.(*discordgo.ActionsRow); ok {
+			for _, c := range ar.Components {
+				if ti, ok := c.(*discordgo.TextInput); ok {
+					values[ti.CustomID] = strings.TrimSpace(ti.Value)
+				}
+			}
+		}
+	}
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Flags: discordgo.MessageFlagsEphemeral},
+	}); err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	r := reply{s, i}
+	user, err := b.api.Link(ctx, i.Member.User.ID, values["username"], values["password"])
+	if err != nil {
+		b.explain(r, err)
+		return
+	}
+	b.log.Info("linked an existing account", "discord", i.Member.User.ID, "login", user.Username)
+	r.text("Connected: your Discord is now **" + user.Username + "** on SwitchNet. Try `/whoami`.")
+}
+
 // onButton handles the accept/decline/cancel buttons from /fc-pending. The
 // person pressing is the one SwitchNet checks, so a button in someone
 // else's message could do nothing on their behalf.
@@ -450,7 +517,9 @@ func (b *Bot) status(ctx context.Context, r reply, _ *discordgo.User) {
 		if icon == "" {
 			icon = "⚪"
 		}
-		if svc.Status == "ok" {
+		// "unknown" is a service that cannot be probed from here (natcheck
+		// speaks only Pia's protocol), not one that is down.
+		if svc.Status == "ok" || svc.Status == "unknown" {
 			up++
 		}
 		line := icon + " " + svc.Name

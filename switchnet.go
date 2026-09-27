@@ -140,6 +140,15 @@ func (c *SwitchNet) Register(ctx context.Context, discordID, username, displayNa
 	return out, err
 }
 
+// Link claims an account made before the bot, by its login and password.
+func (c *SwitchNet) Link(ctx context.Context, discordID, username, password string) (User, error) {
+	var out User
+	err := c.doJSON(ctx, "POST", "/bot/v1/link", "", map[string]string{
+		"discordUserId": discordID, "username": username, "password": password,
+	}, &out)
+	return out, err
+}
+
 func (c *SwitchNet) ResetPassword(ctx context.Context, discordID string) (Credentials, error) {
 	var out Credentials
 	err := c.doJSON(ctx, "POST", "/bot/v1/reset-password", discordID, nil, &out)

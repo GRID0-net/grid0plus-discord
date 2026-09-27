@@ -18,6 +18,7 @@ the account chores (friends, avatar, "who's on").
 | Command | What it does | Who sees the answer |
 |---|---|---|
 | `/register` | Creates your account and shows your login (your Discord username) and a generated 8-character password. Copies your Discord avatar to your Switch profile. | only you |
+| `/link` | For an account made before the bot: enter its login and password in a private form to connect it to your Discord. | only you |
 | `/reset-password` | A new password. The old one stops working, and consoles signed in with it must sign in again. | only you |
 | `/whoami` | Login, friend code, linked consoles, friends, status | only you |
 | `/fc` | Your friend code | only you |
@@ -72,6 +73,11 @@ account.
    ```
 
    The commands appear in the configured servers as soon as the bot connects.
+
+## Updating
+
+`deploy/deploy.sh [ssh-host]` builds for the host's architecture, replaces the
+binary and restarts the service.
 
 ## Development
 
