@@ -1,13 +1,13 @@
-# switchnet-discord
+# grid0plus-discord
 
-The Discord bot for a [SwitchNet](https://github.com/n-popescu/switchnet) server.
-It is **the only way to create a SwitchNet account**: a person runs `/register`
+The Discord bot for a [GRID0+](https://github.com/n-popescu/grid0plus) server.
+It is **the only way to create a GRID0+ account**: a person runs `/register`
 in the community's Discord and gets a login and password to type into their
 Switch's "Link Nintendo Account" screen.
 
 ## Why a bot
 
-A SwitchNet account used to come from a public web form, and every console
+A GRID0+ account used to come from a public web form, and every console
 also left behind a throwaway account when it linked. Discord is where the
 group already is. It knows who each person is, so there's one account per
 Discord account, a password nobody has to invent, and a place for the rest of
@@ -27,17 +27,17 @@ the account chores (friends, avatar, "who's on").
 | `/fc-remove friend:` | Removes a friend (autocompletes from your list) | only you |
 | `/friends` | Your friends and what they're doing | only you |
 | `/avatar` | Re-copies your Discord avatar to your Switch profile picture | only you |
-| `/online` | Everyone on SwitchNet right now, except people whose Switch presence setting is "only me" | the channel |
-| `/status` | Whether each SwitchNet service is up, and how many people are on | the channel |
+| `/online` | Everyone on GRID0+ right now, except people whose Switch presence setting is "only me" | the channel |
+| `/status` | Whether each GRID0+ service is up, and how many people are on | the channel |
 
-Passwords are never logged or stored by the bot. SwitchNet keeps only a
+Passwords are never logged or stored by the bot. GRID0+ keeps only a
 bcrypt hash, so nobody can read one back later, the admin included.
 
 ## How it works
 
-The bot is a thin client. It never touches SwitchNet's database; every action
-is a call to SwitchNet's **bot API** (`internal/baas/botapi.go` in the
-SwitchNet repo), a loopback-only listener inside `baas` that shares its
+The bot is a thin client. It never touches GRID0+'s database; every action
+is a call to GRID0+'s **bot API** (`internal/baas/botapi.go` in the
+GRID0+ repo), a loopback-only listener inside `baas` that shares its
 rules with the console's own endpoints. Each call carries:
 
 - `Authorization: Bearer <baas.bot_api.token>`, which proves it's the bot;
@@ -54,7 +54,7 @@ account.
    intents are needed.
 2. Invite it with the `bot` and `applications.commands` scopes:
    `https://discord.com/oauth2/authorize?client_id=<application id>&scope=bot+applications.commands&permissions=0`
-3. On the SwitchNet host, set `baas.bot_api` in SwitchNet's `config.yaml`
+3. On the GRID0+ host, set `baas.bot_api` in GRID0+'s `config.yaml`
    (`listen: "127.0.0.1:8096"`, `token:` from `openssl rand -hex 32`) and
    restart `switchnet-baas`.
 4. Build and install the bot:

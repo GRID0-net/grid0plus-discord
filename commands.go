@@ -30,11 +30,11 @@ type Bot struct {
 const mintCooldown = 30 * time.Second
 
 var commands = []*discordgo.ApplicationCommand{
-	{Name: "register", Description: "Create your SwitchNet account (your login and password are shown only to you)"},
-	{Name: "link", Description: "Already have a SwitchNet login from before the bot? Connect it to your Discord"},
-	{Name: "reset-password", Description: "Get a new SwitchNet password (only you see it)"},
-	{Name: "whoami", Description: "Your SwitchNet account: friend code, consoles, friends"},
-	{Name: "fc", Description: "Show your SwitchNet friend code"},
+	{Name: "register", Description: "Create your GRID0+ account (your login and password are shown only to you)"},
+	{Name: "link", Description: "Already have a GRID0+ login from before the bot? Connect it to your Discord"},
+	{Name: "reset-password", Description: "Get a new GRID0+ password (only you see it)"},
+	{Name: "whoami", Description: "Your GRID0+ account: friend code, consoles, friends"},
+	{Name: "fc", Description: "Show your GRID0+ friend code"},
 	{
 		Name: "fc-add", Description: "Send a friend request",
 		Options: []*discordgo.ApplicationCommandOption{
@@ -49,9 +49,9 @@ var commands = []*discordgo.ApplicationCommand{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "friend", Description: "Who to remove", Required: true, Autocomplete: true},
 		},
 	},
-	{Name: "friends", Description: "Your SwitchNet friends and what they are doing"},
-	{Name: "online", Description: "Who is on SwitchNet right now"},
-	{Name: "status", Description: "Is SwitchNet up?"},
+	{Name: "friends", Description: "Your GRID0+ friends and what they are doing"},
+	{Name: "online", Description: "Who is on GRID0+ right now"},
+	{Name: "status", Description: "Is GRID0+ up?"},
 	{Name: "avatar", Description: "Use your Discord avatar as your Switch profile picture"},
 }
 
@@ -144,14 +144,14 @@ func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 // explain turns a SwitchNet refusal into a sentence for the person.
 func (b *Bot) explain(r reply, err error) {
 	messages := map[string]string{
-		"not_registered":      "You don't have a SwitchNet account yet. Run `/register` first.",
+		"not_registered":      "You don't have a GRID0+ account yet. Run `/register` first.",
 		"registration_closed": "Registration is closed right now. Ask the server admin.",
-		"already_registered":  "You already have a SwitchNet account. Lost your password? Run `/reset-password`.",
-		"username_taken":      "Your Discord username is already a SwitchNet login. If it's yours from before the bot, run `/link` instead.",
+		"already_registered":  "You already have a GRID0+ account. Lost your password? Run `/reset-password`.",
+		"username_taken":      "Your Discord username is already a GRID0+ login. If it's yours from before the bot, run `/link` instead.",
 		"bad_credentials":     "That login and password don't match. Check them and try again.",
 		"claimed":             "That account is already connected to another Discord account. Ask the server admin.",
 		"rate_limited":        "Too many tries. Wait a few minutes.",
-		"no_such_user":        "Nobody on SwitchNet matches that. They may need to `/register` first.",
+		"no_such_user":        "Nobody on GRID0+ matches that. They may need to `/register` first.",
 		"self":                "You can't add yourself.",
 		"refused":             "That person isn't accepting friend requests.",
 		"already_friends":     "You're already friends.",
@@ -168,7 +168,7 @@ func (b *Bot) explain(r reply, err error) {
 		}
 	}
 	b.log.Error("switchnet call failed", "error", err)
-	r.text("Something went wrong talking to SwitchNet. Try again in a minute; if it keeps happening, tell the server admin.")
+	r.text("Something went wrong talking to GRID0+. Try again in a minute; if it keeps happening, tell the server admin.")
 }
 
 // allowMint enforces the password cooldown per person.
@@ -209,7 +209,7 @@ func (b *Bot) register(ctx context.Context, r reply, user *discordgo.User) {
 		b.explain(r, err)
 		return
 	}
-	embed := credentialsEmbed("Your SwitchNet account", creds)
+	embed := credentialsEmbed("Your GRID0+ account", creds)
 	if creds.FriendCode != "" {
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{Name: "Friend code", Value: formatFriendCode(creds.FriendCode)})
 	}
@@ -231,7 +231,7 @@ func (b *Bot) resetPassword(ctx context.Context, r reply, user *discordgo.User) 
 		b.explain(r, err)
 		return
 	}
-	embed := credentialsEmbed("Your new SwitchNet password", creds)
+	embed := credentialsEmbed("Your new GRID0+ password", creds)
 	embed.Description = "Your old password no longer works, and consoles signed in with it will be asked to sign in again. " +
 		"Only you can see this message."
 	r.edit(&discordgo.WebhookEdit{Embeds: &[]*discordgo.MessageEmbed{embed}})
@@ -354,8 +354,8 @@ func (b *Bot) showLinkForm(s *discordgo.Session, i *discordgo.InteractionCreate)
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
 			CustomID:   "link",
-			Title:      "Connect your SwitchNet login",
-			Components: []discordgo.MessageComponent{input("username", "SwitchNet login"), input("password", "Password")},
+			Title:      "Connect your GRID0+ login",
+			Components: []discordgo.MessageComponent{input("username", "GRID0+ login"), input("password", "Password")},
 		},
 	})
 	if err != nil {
@@ -393,7 +393,7 @@ func (b *Bot) onLinkSubmit(s *discordgo.Session, i *discordgo.InteractionCreate)
 		return
 	}
 	b.log.Info("linked an existing account", "discord", i.Member.User.ID, "login", user.Username)
-	r.text("Connected: your Discord is now **" + user.Username + "** on SwitchNet. Try `/whoami`.")
+	r.text("Connected: your Discord is now **" + user.Username + "** on GRID0+. Try `/whoami`.")
 }
 
 // onButton handles the accept/decline/cancel buttons from /fc-pending. The
@@ -492,7 +492,7 @@ func (b *Bot) online(ctx context.Context, r reply, _ *discordgo.User) {
 		return
 	}
 	if len(users) == 0 {
-		r.text("Nobody's on SwitchNet right now.")
+		r.text("Nobody's on GRID0+ right now.")
 		return
 	}
 	sort.SliceStable(users, func(a, c int) bool { return presenceRank(users[a]) < presenceRank(users[c]) })
@@ -500,13 +500,13 @@ func (b *Bot) online(ctx context.Context, r reply, _ *discordgo.User) {
 	for _, u := range users {
 		lines = append(lines, presenceDot(u)+" **"+displayUser(u)+"**: "+presenceWord(u))
 	}
-	r.text(fmt.Sprintf("**%d on SwitchNet**\n", len(users)) + strings.Join(lines, "\n"))
+	r.text(fmt.Sprintf("**%d on GRID0+**\n", len(users)) + strings.Join(lines, "\n"))
 }
 
 func (b *Bot) status(ctx context.Context, r reply, _ *discordgo.User) {
 	st, err := b.api.Status(ctx)
 	if err != nil {
-		r.text("🔴 SwitchNet isn't answering at all.")
+		r.text("🔴 GRID0+ isn't answering at all.")
 		b.log.Error("status", "error", err)
 		return
 	}
@@ -528,9 +528,9 @@ func (b *Bot) status(ctx context.Context, r reply, _ *discordgo.User) {
 		}
 		lines = append(lines, line)
 	}
-	headline := "🟢 SwitchNet is up"
+	headline := "🟢 GRID0+ is up"
 	if up < len(st.Services) {
-		headline = fmt.Sprintf("🟡 SwitchNet: %d of %d services up", up, len(st.Services))
+		headline = fmt.Sprintf("🟡 GRID0+: %d of %d services up", up, len(st.Services))
 	}
 	embed := &discordgo.MessageEmbed{
 		Title:       headline,

@@ -1,4 +1,4 @@
-module github.com/n-popescu/switchnet-discord
+module github.com/n-popescu/grid0plus-discord
 
 go 1.24.0
 

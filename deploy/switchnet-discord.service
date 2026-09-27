@@ -1,8 +1,8 @@
 [Unit]
-Description=SwitchNet Discord bot
+Description=GRID0+ Discord bot
 After=network-online.target switchnet-baas.service
 Wants=network-online.target
-# The bot keeps retrying: SwitchNet or Discord being briefly unreachable is
+# The bot keeps retrying: GRID0+ or Discord being briefly unreachable is
 # not a reason to stay down.
 StartLimitIntervalSec=0
 

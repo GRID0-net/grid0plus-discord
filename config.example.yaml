@@ -3,7 +3,7 @@
 # Keep the two secrets out of this file: set them in the environment instead
 # (deploy/switchnet-discord.service reads /etc/switchnet-discord.env):
 #   SWITCHNET_DISCORD_TOKEN   the bot token from the Discord developer portal
-#   SWITCHNET_BOT_API_TOKEN   SwitchNet's baas.bot_api.token
+#   SWITCHNET_BOT_API_TOKEN   GRID0+'s baas.bot_api.token
 
 discord:
   token: ""
@@ -15,6 +15,6 @@ discord:
   register_role_id: ""
 
 switchnet:
-  # SwitchNet's baas.bot_api.listen. The bot runs on the same host.
+  # GRID0+'s baas.bot_api.listen. The bot runs on the same host.
   api_url: "http://127.0.0.1:8096"
   api_token: ""

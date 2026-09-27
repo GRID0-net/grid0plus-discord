@@ -5,9 +5,9 @@ operator; this is for you.
 
 ## What this is
 
-The Discord front end for SwitchNet accounts. It is deliberately thin: every
-rule (who may register, friend-request rules, identity) lives in SwitchNet's
-bot API, `internal/baas/botapi.go` in `n-popescu/switchnet`. If a behaviour
+The Discord front end for GRID0+ accounts. It is deliberately thin: every
+rule (who may register, friend-request rules, identity) lives in GRID0+'s
+bot API, `internal/baas/botapi.go` in `n-popescu/grid0plus`. If a behaviour
 change is about *accounts*, it almost certainly belongs there, with a test
 there, not here.
 
@@ -28,10 +28,10 @@ there, not here.
 ## Adding a command
 
 1. Add it to `commands` and `handlers` in `commands.go`.
-2. If it needs data SwitchNet doesn't expose yet, add the endpoint to
-   `botapi.go` in SwitchNet first (with a test in `botapi_test.go`), then a
+2. If it needs data GRID0+ doesn't expose yet, add the endpoint to
+   `botapi.go` in GRID0+ first (with a test in `botapi_test.go`), then a
    method in `switchnet.go` here.
-3. Map any new SwitchNet error code to a sentence in `explain`.
+3. Map any new GRID0+ error code to a sentence in `explain`.
 
 Commands are registered per guild on every connect (bulk overwrite), so a
 removed command disappears on the next restart.

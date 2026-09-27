@@ -12,7 +12,7 @@ import (
 )
 
 // SwitchNet is a client for SwitchNet's bot API (internal/baas/botapi.go in
-// n-popescu/switchnet). The bot never touches SwitchNet's database: every
+// n-popescu/grid0plus). The bot never touches SwitchNet's database: every
 // account change goes through that API, so its rules live in one place.
 type SwitchNet struct {
 	baseURL string
