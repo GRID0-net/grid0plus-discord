@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -41,17 +42,26 @@ func main() {
 		lastMint: map[string]time.Time{},
 	}
 	session.AddHandler(bot.onInteraction)
-	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		log.Info("connected", "as", r.User.Username)
+	registerIn := func(s *discordgo.Session, guild string) {
+		if !slices.Contains(cfg.Discord.GuildIDs, guild) {
+			return
+		}
 		// Per server, not global: guild commands update instantly, and the
 		// bot is only for the servers it is configured for.
-		for _, guild := range cfg.Discord.GuildIDs {
-			if _, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, guild, commands); err != nil {
-				log.Error("register commands", "guild", guild, "error", err)
-				continue
-			}
-			log.Info("commands registered", "guild", guild, "count", len(commands))
+		if _, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, guild, commands); err != nil {
+			log.Error("register commands (is the bot invited with applications.commands?)", "guild", guild, "error", err)
+			return
 		}
+		log.Info("commands registered", "guild", guild, "count", len(commands))
+	}
+	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		log.Info("connected", "as", r.User.Username)
+	})
+	// GuildCreate arrives for every server the bot is in once connected, and
+	// again the moment it is invited to a new one, so an invite needs no
+	// restart.
+	session.AddHandler(func(s *discordgo.Session, g *discordgo.GuildCreate) {
+		registerIn(s, g.ID)
 	})
 
 	if err := session.Open(); err != nil {
