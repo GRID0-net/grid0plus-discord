@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,41 @@ func TestTheClientSendsTheTokenAndTheCaller(t *testing.T) {
 	if me.UserID != "abc" || me.Consoles != 1 {
 		t.Errorf("decoded %+v", me)
 	}
+}
+
+func TestResetPasswordSendsTheDisconnectChoice(t *testing.T) {
+	var choices []bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/bot/v1/reset-password" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		var req struct {
+			DisconnectAllAccounts bool `json:"disconnectAllAccounts"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+		}
+		choices = append(choices, req.DisconnectAllAccounts)
+		_ = json.NewEncoder(w).Encode(map[string]string{"password": "new-password"})
+	}))
+	defer srv.Close()
+	client := NewSwitchNet(srv.URL, "secret")
+	for _, disconnect := range []bool{false, true} {
+		creds, err := client.ResetPassword(t.Context(), "123456789012345678", disconnect)
+		if err != nil || creds.Password != "new-password" {
+			t.Fatalf("reset disconnect=%v: %+v, %v", disconnect, creds, err)
+		}
+	}
+	if !bytes.Equal([]byte{boolByte(choices[0]), boolByte(choices[1])}, []byte{0, 1}) {
+		t.Errorf("disconnect choices = %v", choices)
+	}
+}
+
+func boolByte(v bool) byte {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 func TestARefusalKeepsItsCode(t *testing.T) {

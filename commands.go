@@ -32,7 +32,11 @@ const mintCooldown = 30 * time.Second
 var commands = []*discordgo.ApplicationCommand{
 	{Name: "register", Description: "Create your GRID0+ account (your login and password are shown only to you)"},
 	{Name: "link", Description: "Already have a GRID0+ login from before the bot? Connect it to your Discord"},
-	{Name: "reset-password", Description: "Get a new GRID0+ password (only you see it)"},
+	{Name: "reset-password", Description: "Get a new GRID0+ password (only you see it)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionBoolean, Name: "disconnect_all_accounts", Description: "Disconnect linked consoles too (default: yes)"},
+		},
+	},
 	{Name: "whoami", Description: "Your GRID0+ account: friend code, consoles, friends"},
 	{Name: "fc", Description: "Show your GRID0+ friend code"},
 	{
@@ -226,14 +230,23 @@ func (b *Bot) resetPassword(ctx context.Context, r reply, user *discordgo.User) 
 		r.text("Slow down a little; try again in half a minute.")
 		return
 	}
-	creds, err := b.api.ResetPassword(ctx, user.ID)
+	disconnect := true
+	for _, option := range r.i.ApplicationCommandData().Options {
+		if option.Name == "disconnect_all_accounts" {
+			disconnect = option.BoolValue()
+		}
+	}
+	creds, err := b.api.ResetPassword(ctx, user.ID, disconnect)
 	if err != nil {
 		b.explain(r, err)
 		return
 	}
 	embed := credentialsEmbed("Your new GRID0+ password", creds)
-	embed.Description = "Your old password no longer works, and consoles signed in with it will be asked to sign in again. " +
-		"Only you can see this message."
+	if disconnect {
+		embed.Description = "Your old password no longer works, and linked consoles will be asked to sign in again. Only you can see this message."
+	} else {
+		embed.Description = "Your old password no longer works. Linked consoles stay signed in. Only you can see this message."
+	}
 	r.edit(&discordgo.WebhookEdit{Embeds: &[]*discordgo.MessageEmbed{embed}})
 }
 

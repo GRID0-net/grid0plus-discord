@@ -149,9 +149,9 @@ func (c *SwitchNet) Link(ctx context.Context, discordID, username, password stri
 	return out, err
 }
 
-func (c *SwitchNet) ResetPassword(ctx context.Context, discordID string) (Credentials, error) {
+func (c *SwitchNet) ResetPassword(ctx context.Context, discordID string, disconnectAllAccounts bool) (Credentials, error) {
 	var out Credentials
-	err := c.doJSON(ctx, "POST", "/bot/v1/reset-password", discordID, nil, &out)
+	err := c.doJSON(ctx, "POST", "/bot/v1/reset-password", discordID, map[string]bool{"disconnectAllAccounts": disconnectAllAccounts}, &out)
 	return out, err
 }
 
