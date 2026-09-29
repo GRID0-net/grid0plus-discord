@@ -9,17 +9,19 @@ Switch's "Link Nintendo Account" screen.
 
 A GRID0+ account used to come from a public web form, and every console
 also left behind a throwaway account when it linked. Discord is where the
-group already is. It knows who each person is, so there's one account per
-Discord account, a password nobody has to invent, and a place for the rest of
-the account chores (friends, avatar, "who's on").
+group already is. It knows who each person is, so a GRID0+ account belongs to
+the Discord account that made it, a password nobody has to invent, and a place
+for the rest of the account chores (friends, avatar, "who's on").
 
 ## Commands
 
 | Command | What it does | Who sees the answer |
 |---|---|---|
 | `/register` | Creates your account and shows your login (your Discord username) and a generated 8-character password. Copies your Discord avatar to your Switch profile. | only you |
-| `/link` | For an account made before the bot: enter its login and password in a private form to connect it to your Discord. | only you |
+| `/register username:alice.psn` | An **extra** account, with a login you choose, beside the first one. Repeat it for as many as you want. | only you |
+| `/link` | For an account made before the bot: enter its login and password in a private form to connect it to your Discord. Works for a second account too. | only you |
 | `/reset-password` | A new password. The old one stops working. `disconnect_all_accounts` defaults to true; set it to false to keep linked consoles signed in. | only you |
+| `/reset-password username:…` | A new password for that one of your accounts instead of your first (autocompletes from your own logins). | only you |
 | `/whoami` | Login, friend code, linked consoles, friends, status | only you |
 | `/fc` | Your friend code | only you |
 | `/fc-add user:@someone` or `code:SW-…` | Sends a friend request. If they already asked you, you become friends. | only you |
@@ -32,6 +34,18 @@ the account chores (friends, avatar, "who's on").
 
 Passwords are never logged or stored by the bot. GRID0+ keeps only a
 bcrypt hash, so nobody can read one back later, the admin included.
+
+## More than one account
+
+One Discord account can own several GRID0+ accounts: `/register username:…`
+for each extra, `/link` for accounts that predate the bot. The first one you
+made is your **first account** — that is what `/whoami`, `/fc`, `/friends` and a
+bare `/reset-password` act on — and the rest are reachable by naming their login.
+
+Naming a login on `/reset-password` can only ever reach your own: GRID0+ resolves
+it through the accounts your Discord account owns, and answers the same way for
+a login that is somebody else's as for one that does not exist, so no login's
+existence is readable by asking.
 
 ## How it works
 

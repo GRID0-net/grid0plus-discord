@@ -30,10 +30,17 @@ type Bot struct {
 const mintCooldown = 30 * time.Second
 
 var commands = []*discordgo.ApplicationCommand{
-	{Name: "register", Description: "Create your GRID0+ account (your login and password are shown only to you)"},
-	{Name: "link", Description: "Already have a GRID0+ login from before the bot? Connect it to your Discord"},
-	{Name: "reset-password", Description: "Get a new GRID0+ password (only you see it)",
+	{
+		Name: "register", Description: "Create a GRID0+ account (your login and password are shown only to you)",
 		Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionString, Name: "username", Description: "A login name of your choosing, to add an account besides your first one"},
+		},
+	},
+	{Name: "link", Description: "Already have a GRID0+ login from before the bot? Connect it to your Discord"},
+	{
+		Name: "reset-password", Description: "Get a new GRID0+ password (only you see it)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionString, Name: "username", Description: "Which of your accounts (default: the one you registered first)", Autocomplete: true},
 			{Type: discordgo.ApplicationCommandOptionBoolean, Name: "disconnect_all_accounts", Description: "Disconnect linked consoles too (default: yes)"},
 		},
 	},
@@ -150,8 +157,9 @@ func (b *Bot) explain(r reply, err error) {
 	messages := map[string]string{
 		"not_registered":      "You don't have a GRID0+ account yet. Run `/register` first.",
 		"registration_closed": "Registration is closed right now. Ask the server admin.",
-		"already_registered":  "You already have a GRID0+ account. Lost your password? Run `/reset-password`.",
-		"username_taken":      "Your Discord username is already a GRID0+ login. If it's yours from before the bot, run `/link` instead.",
+		"already_registered":  "You already have a GRID0+ account. Lost your password? Run `/reset-password`. Want another account? Run `/register username:...`.",
+		"username_taken":      "That login is already a GRID0+ username. If it's yours from before the bot, run `/link` instead.",
+		"not_your_account":    "That's not one of your accounts, so I won't touch it.",
 		"bad_credentials":     "That login and password don't match. Check them and try again.",
 		"claimed":             "That account is already connected to another Discord account. Ask the server admin.",
 		"rate_limited":        "Too many tries. Wait a few minutes.",
@@ -175,15 +183,28 @@ func (b *Bot) explain(r reply, err error) {
 	r.text("Something went wrong talking to GRID0+. Try again in a minute; if it keeps happening, tell the server admin.")
 }
 
-// allowMint enforces the password cooldown per person.
-func (b *Bot) allowMint(userID string) bool {
+// allowMint enforces the password cooldown per person and per account, so
+// somebody running several accounts is not made to wait between each of them
+// while a single person still cannot mint one password per second.
+func (b *Bot) allowMint(userID, account string) bool {
+	key := userID + "/" + account
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if last, ok := b.lastMint[userID]; ok && time.Since(last) < mintCooldown {
+	if last, ok := b.lastMint[key]; ok && time.Since(last) < mintCooldown {
 		return false
 	}
-	b.lastMint[userID] = time.Now()
+	b.lastMint[key] = time.Now()
 	return true
+}
+
+// option reads a command option by name, or "" when it was not given.
+func option(data discordgo.ApplicationCommandInteractionData, name string) string {
+	for _, o := range data.Options {
+		if o.Name == name {
+			return o.StringValue()
+		}
+	}
+	return ""
 }
 
 func credentialsEmbed(title string, c Credentials) *discordgo.MessageEmbed {
@@ -204,11 +225,18 @@ func (b *Bot) register(ctx context.Context, r reply, user *discordgo.User) {
 		r.text("You need the right role in this server to register. Ask the server admin.")
 		return
 	}
-	if !b.allowMint(user.ID) {
+	// With no login named, the account is made from the person's own Discord
+	// username, which only makes sense for someone who has none yet. Naming
+	// one is how a second account is asked for.
+	login := strings.TrimSpace(option(r.i.ApplicationCommandData(), "username"))
+	if login == "" {
+		login = user.Username
+	}
+	if !b.allowMint(user.ID, login) {
 		r.text("Slow down a little; try again in half a minute.")
 		return
 	}
-	creds, err := b.api.Register(ctx, user.ID, user.Username, displayName(r.i.Member))
+	creds, err := b.api.Register(ctx, user.ID, login, displayName(r.i.Member), login != user.Username)
 	if err != nil {
 		b.explain(r, err)
 		return
@@ -226,17 +254,21 @@ func (b *Bot) register(ctx context.Context, r reply, user *discordgo.User) {
 }
 
 func (b *Bot) resetPassword(ctx context.Context, r reply, user *discordgo.User) {
-	if !b.allowMint(user.ID) {
+	// Which of their accounts: the one named, or their first. GRID0+ resolves
+	// it against the accounts that Discord account owns, so a name that is
+	// not one of theirs never reaches anybody's password.
+	login := strings.TrimSpace(option(r.i.ApplicationCommandData(), "username"))
+	if !b.allowMint(user.ID, login) {
 		r.text("Slow down a little; try again in half a minute.")
 		return
 	}
 	disconnect := true
-	for _, option := range r.i.ApplicationCommandData().Options {
-		if option.Name == "disconnect_all_accounts" {
-			disconnect = option.BoolValue()
+	for _, o := range r.i.ApplicationCommandData().Options {
+		if o.Name == "disconnect_all_accounts" {
+			disconnect = o.BoolValue()
 		}
 	}
-	creds, err := b.api.ResetPassword(ctx, user.ID, disconnect)
+	creds, err := b.api.ResetPassword(ctx, user.ID, login, disconnect)
 	if err != nil {
 		b.explain(r, err)
 		return
@@ -454,24 +486,45 @@ func (b *Bot) fcRemove(ctx context.Context, r reply, user *discordgo.User) {
 	r.text("Removed **" + displayUser(friends[idx]) + "** from your friends.")
 }
 
-// onAutocomplete offers the caller's friends for /fc-remove.
+// onAutocomplete offers the caller's own accounts for /reset-password, and
+// their friends for /fc-remove. Nothing here is ever anybody else's: a reset
+// only reaches the caller's accounts, so offering a stranger's login would be
+// offering something that cannot be used.
 func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+	data := i.ApplicationCommandData()
+	// The option being typed is the last one Discord sends.
 	typed := ""
-	if opts := i.ApplicationCommandData().Options; len(opts) > 0 {
-		typed = strings.ToLower(opts[0].StringValue())
+	if n := len(data.Options); n > 0 {
+		typed = strings.ToLower(data.Options[n-1].StringValue())
 	}
-	friends, _ := b.api.Friends(ctx, i.Member.User.ID)
 	var choices []*discordgo.ApplicationCommandOptionChoice
-	for _, f := range friends {
-		name := displayUser(f)
+	add := func(name, value string) {
 		if typed != "" && !strings.Contains(strings.ToLower(name), typed) {
-			continue
+			return
 		}
-		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{Name: name, Value: f.UserID})
-		if len(choices) == 25 { // Discord's limit
-			break
+		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{Name: name, Value: value})
+	}
+	if data.Name == "reset-password" {
+		accounts, _ := b.api.Accounts(ctx, i.Member.User.ID)
+		for _, a := range accounts {
+			name := a.Username
+			if a.Primary {
+				name += " (your first account)"
+			}
+			add(name, a.Username)
+			if len(choices) == maxChoices {
+				break
+			}
+		}
+	} else {
+		friends, _ := b.api.Friends(ctx, i.Member.User.ID)
+		for _, f := range friends {
+			add(displayUser(f), f.UserID)
+			if len(choices) == maxChoices {
+				break
+			}
 		}
 	}
 	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -479,6 +532,9 @@ func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreat
 		Data: &discordgo.InteractionResponseData{Choices: choices},
 	})
 }
+
+// maxChoices is Discord's limit on autocomplete suggestions.
+const maxChoices = 25
 
 func (b *Bot) friends(ctx context.Context, r reply, user *discordgo.User) {
 	friends, err := b.api.Friends(ctx, user.ID)

@@ -32,31 +32,100 @@ func TestTheClientSendsTheTokenAndTheCaller(t *testing.T) {
 	}
 }
 
-func TestResetPasswordSendsTheDisconnectChoice(t *testing.T) {
+// A reset names which of the caller's own accounts it is for, and sends the
+// disconnect choice with it. The empty login is the account they registered
+// first, and has to go on the wire as an empty string rather than being left
+// out, or "no account named" would stop being distinguishable downstream.
+func TestResetPasswordSendsTheLoginAndTheDisconnectChoice(t *testing.T) {
+	var logins []string
 	var choices []bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/bot/v1/reset-password" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		var req struct {
-			DisconnectAllAccounts bool `json:"disconnectAllAccounts"`
+			Username              string `json:"username"`
+			DisconnectAllAccounts bool   `json:"disconnectAllAccounts"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Error(err)
 		}
+		logins = append(logins, req.Username)
 		choices = append(choices, req.DisconnectAllAccounts)
 		_ = json.NewEncoder(w).Encode(map[string]string{"password": "new-password"})
 	}))
 	defer srv.Close()
 	client := NewSwitchNet(srv.URL, "secret")
-	for _, disconnect := range []bool{false, true} {
-		creds, err := client.ResetPassword(t.Context(), "123456789012345678", disconnect)
+	for _, tc := range []struct {
+		login      string
+		disconnect bool
+	}{{"", false}, {"alice.psn", true}} {
+		creds, err := client.ResetPassword(t.Context(), "123456789012345678", tc.login, tc.disconnect)
 		if err != nil || creds.Password != "new-password" {
-			t.Fatalf("reset disconnect=%v: %+v, %v", disconnect, creds, err)
+			t.Fatalf("reset %q: %+v, %v", tc.login, creds, err)
 		}
 	}
 	if !bytes.Equal([]byte{boolByte(choices[0]), boolByte(choices[1])}, []byte{0, 1}) {
 		t.Errorf("disconnect choices = %v", choices)
+	}
+	if logins[0] != "" || logins[1] != "alice.psn" {
+		t.Errorf("logins sent = %q, want the named one and an empty one", logins)
+	}
+}
+
+// Registering a second account is only allowed when the person named the login
+// themselves, so the flag has to reach GRID0+ rather than being inferred there
+// from a login that happens to differ.
+func TestRegisterSaysWhenAnExtraAccountWasAskedFor(t *testing.T) {
+	var requests []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+		}
+		requests = append(requests, req)
+		_ = json.NewEncoder(w).Encode(map[string]string{"username": "alice", "password": "pw"})
+	}))
+	defer srv.Close()
+	client := NewSwitchNet(srv.URL, "secret")
+	for _, tc := range []struct {
+		login      string
+		additional bool
+	}{{"alice", false}, {"alice.psn", true}} {
+		if _, err := client.Register(t.Context(), "123456789012345678", tc.login, "Alice", tc.additional); err != nil {
+			t.Fatalf("register %q: %v", tc.login, err)
+		}
+	}
+	if requests[0]["additional"] != false || requests[1]["additional"] != true {
+		t.Errorf("additional flags = %v, %v", requests[0]["additional"], requests[1]["additional"])
+	}
+	if requests[1]["username"] != "alice.psn" {
+		t.Errorf("second register username = %v", requests[1]["username"])
+	}
+}
+
+// The list /reset-password autocompletes is the caller's own accounts, and it
+// is asked for as the caller: a list of anybody else's logins would be a leak
+// the reset itself refuses to be.
+func TestAccountsAsksForTheCallersOwn(t *testing.T) {
+	var gotCaller string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCaller = r.Header.Get("X-Discord-User-ID")
+		_ = json.NewEncoder(w).Encode(map[string]any{"accounts": []Account{
+			{UserID: "u1", Username: "alice", Primary: true},
+			{UserID: "u2", Username: "alice.psn"},
+		}})
+	}))
+	defer srv.Close()
+	accounts, err := NewSwitchNet(srv.URL, "secret").Accounts(t.Context(), "123456789012345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotCaller != "123456789012345678" {
+		t.Errorf("caller = %q", gotCaller)
+	}
+	if len(accounts) != 2 || accounts[0].Username != "alice" || !accounts[0].Primary || accounts[1].Primary {
+		t.Errorf("accounts = %+v", accounts)
 	}
 }
 

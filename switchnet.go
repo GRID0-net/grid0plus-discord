@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// SwitchNet is a client for SwitchNet's bot API (internal/baas/botapi.go in
-// n-popescu/grid0plus). The bot never touches SwitchNet's database: every
-// account change goes through that API, so its rules live in one place.
+// SwitchNet is a client for GRID0+'s bot API (internal/baas/botapi.go in
+// n-popescu/grid0plus). The bot never touches GRID0+'s database: every account
+// change goes through that API, so its rules live in one place.
 type SwitchNet struct {
 	baseURL string
 	token   string
@@ -32,7 +32,7 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("switchnet: %d %s: %s", e.Status, e.Code, e.Message)
+	return fmt.Sprintf("grid0+: %d %s: %s", e.Status, e.Code, e.Message)
 }
 
 // IsCode reports whether err is a SwitchNet refusal with that code.
@@ -57,7 +57,7 @@ func (c *SwitchNet) do(ctx context.Context, method, path, discordID, contentType
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("switchnet unreachable: %w", err)
+		return fmt.Errorf("grid0+ unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -113,6 +113,14 @@ type Me struct {
 	RegisteredAt time.Time `json:"registeredAt"`
 }
 
+// Account is one of the GRID0+ accounts a Discord account owns. Primary is the
+// one commands that name no account act on.
+type Account struct {
+	UserID   string `json:"userId"`
+	Username string `json:"username"`
+	Primary  bool   `json:"primary"`
+}
+
 type FriendRequest struct {
 	ID        string    `json:"id"`
 	State     string    `json:"state"`
@@ -132,12 +140,27 @@ type Status struct {
 	Players  int             `json:"players"`
 }
 
-func (c *SwitchNet) Register(ctx context.Context, discordID, username, displayName string) (Credentials, error) {
+// Register creates a GRID0+ account owned by this Discord account. additional
+// is for a person who already has one and named this login themselves: it is
+// the only thing that makes a second account rather than a refusal.
+func (c *SwitchNet) Register(ctx context.Context, discordID, username, displayName string, additional bool) (Credentials, error) {
 	var out Credentials
-	err := c.doJSON(ctx, "POST", "/bot/v1/register", "", map[string]string{
+	err := c.doJSON(ctx, "POST", "/bot/v1/register", "", map[string]any{
 		"discordUserId": discordID, "username": username, "displayName": displayName,
+		"additional": additional,
 	}, &out)
 	return out, err
+}
+
+// Accounts lists the GRID0+ accounts this Discord account owns, its main one
+// first. It is what /reset-password offers, and the same set that call can
+// reach.
+func (c *SwitchNet) Accounts(ctx context.Context, discordID string) ([]Account, error) {
+	var out struct {
+		Accounts []Account `json:"accounts"`
+	}
+	err := c.doJSON(ctx, "GET", "/bot/v1/accounts", discordID, nil, &out)
+	return out.Accounts, err
 }
 
 // Link claims an account made before the bot, by its login and password.
@@ -149,9 +172,13 @@ func (c *SwitchNet) Link(ctx context.Context, discordID, username, password stri
 	return out, err
 }
 
-func (c *SwitchNet) ResetPassword(ctx context.Context, discordID string, disconnectAllAccounts bool) (Credentials, error) {
+// ResetPassword mints a new password for one of the caller's own accounts:
+// the one named by username, or their main account when username is empty.
+func (c *SwitchNet) ResetPassword(ctx context.Context, discordID, username string, disconnectAllAccounts bool) (Credentials, error) {
 	var out Credentials
-	err := c.doJSON(ctx, "POST", "/bot/v1/reset-password", discordID, map[string]bool{"disconnectAllAccounts": disconnectAllAccounts}, &out)
+	err := c.doJSON(ctx, "POST", "/bot/v1/reset-password", discordID, map[string]any{
+		"username": username, "disconnectAllAccounts": disconnectAllAccounts,
+	}, &out)
 	return out, err
 }
 

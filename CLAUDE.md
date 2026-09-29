@@ -20,8 +20,10 @@ there, not here.
    person it belongs to. Credential replies are ephemeral; `commandsArePublic`
    lists the only two commands that answer in the channel.
 3. **The caller is `i.Member.User.ID` from Discord's payload, always.** Never
-   let a command option name "who I am". Targets (`/fc-add user:`) are
-   fine; the actor is not.
+   let a command option name "who I am". Targets (`/fc-add user:`,
+   `/reset-password username:`) are fine; the actor is not. `/register
+   username:` is the exception that looks like one: it names a *login*, and
+   GRID0+ decides which account it belongs to.
 4. **Guild-locked.** `onInteraction` ignores DMs and servers not in
    `discord.guild_ids`. Don't remove that check to "make DMs work".
 
