@@ -206,3 +206,29 @@ func TestConfigRefusesMissingSecretsAndUnknownKeys(t *testing.T) {
 		t.Errorf("token = %q", cfg.Discord.Token)
 	}
 }
+
+// A save wipe names the account the same way a reset does, and reads back the
+// backup GRID0+ kept.
+func TestWipeSplatoon3SaveSendsTheLoginAndReadsTheBackup(t *testing.T) {
+	var gotPath, gotLogin, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		var req struct {
+			Username string `json:"username"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		gotLogin = req.Username
+		_ = json.NewEncoder(w).Encode(map[string]any{"login": "alice", "bytes": 12, "backup": "u-20261010T110000Z-wipe.pb"})
+	}))
+	defer srv.Close()
+	res, err := NewSwitchNet(srv.URL, "secret").WipeSplatoon3Save(t.Context(), "123456789012345678", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != "POST" || gotPath != "/bot/v1/splatoon3/save/wipe" || gotLogin != "alice" {
+		t.Errorf("request %s %s login %q", gotMethod, gotPath, gotLogin)
+	}
+	if res.Backup != "u-20261010T110000Z-wipe.pb" || res.Login != "alice" {
+		t.Errorf("decoded %+v", res)
+	}
+}

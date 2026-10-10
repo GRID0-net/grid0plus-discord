@@ -44,6 +44,12 @@ var commands = []*discordgo.ApplicationCommand{
 			{Type: discordgo.ApplicationCommandOptionBoolean, Name: "disconnect_all_accounts", Description: "Disconnect linked consoles too (default: yes)"},
 		},
 	},
+	{
+		Name: "splatoon-save-wipe", Description: "Wipe your Splatoon 3 cloud save on GRID0+ (asks to confirm; kept as a backup)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionString, Name: "username", Description: "Which of your accounts (default: the one you registered first)", Autocomplete: true},
+		},
+	},
 	{Name: "whoami", Description: "Your GRID0+ account: friend code, consoles, friends"},
 	{Name: "fc", Description: "Show your GRID0+ friend code"},
 	{
@@ -135,17 +141,18 @@ func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	b.log.Info("command", "name", name, "user", user.ID, "username", user.Username)
 
 	handlers := map[string]func(context.Context, reply, *discordgo.User){
-		"register":       b.register,
-		"reset-password": b.resetPassword,
-		"whoami":         b.whoami,
-		"fc":             b.fc,
-		"fc-add":         b.fcAdd,
-		"fc-pending":     b.fcPending,
-		"fc-remove":      b.fcRemove,
-		"friends":        b.friends,
-		"online":         b.online,
-		"status":         b.status,
-		"avatar":         b.avatar,
+		"register":           b.register,
+		"reset-password":     b.resetPassword,
+		"splatoon-save-wipe": b.saveWipePrompt,
+		"whoami":             b.whoami,
+		"fc":                 b.fc,
+		"fc-add":             b.fcAdd,
+		"fc-pending":         b.fcPending,
+		"fc-remove":          b.fcRemove,
+		"friends":            b.friends,
+		"online":             b.online,
+		"status":             b.status,
+		"avatar":             b.avatar,
 	}
 	if h, ok := handlers[name]; ok {
 		h(ctx, r, user)
@@ -172,6 +179,8 @@ func (b *Bot) explain(r reply, err error) {
 		"not_pending":         "That request was already answered.",
 		"not_jpeg":            "Discord didn't give me a usable picture. Try again later.",
 		"bad_friend_code":     "A friend code is 12 digits, like SW-1234-5678-9012.",
+		"no_cloud_save":       "That account has no Splatoon 3 cloud save on GRID0+, so there's nothing to wipe.",
+		"save_wipe_disabled":  "Wiping cloud saves isn't turned on on this GRID0+ server.",
 	}
 	for code, msg := range messages {
 		if IsCode(err, code) {
@@ -446,6 +455,10 @@ func (b *Bot) onLinkSubmit(s *discordgo.Session, i *discordgo.InteractionCreate)
 // else's message could do nothing on their behalf.
 func (b *Bot) onButton(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	parts := strings.SplitN(i.MessageComponentData().CustomID, ":", 3)
+	if len(parts) == 3 && parts[0] == "sw" {
+		b.onSaveWipeButton(s, i, parts[1], parts[2])
+		return
+	}
 	if len(parts) != 3 || parts[0] != "fr" {
 		return
 	}
@@ -506,7 +519,7 @@ func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreat
 		}
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{Name: name, Value: value})
 	}
-	if data.Name == "reset-password" {
+	if data.Name == "reset-password" || data.Name == "splatoon-save-wipe" {
 		accounts, _ := b.api.Accounts(ctx, i.Member.User.ID)
 		for _, a := range accounts {
 			name := a.Username
@@ -731,4 +744,58 @@ func presenceRank(u User) int {
 		return 1
 	}
 	return 2
+}
+
+// saveWipePrompt explains what wiping does and asks for a button press: the
+// wipe itself only happens in onSaveWipeButton.
+func (b *Bot) saveWipePrompt(ctx context.Context, r reply, user *discordgo.User) {
+	login := strings.TrimSpace(option(r.i.ApplicationCommandData(), "username"))
+	which := "your first account"
+	if login != "" {
+		which = "**" + login + "**"
+	}
+	msg := "This deletes the Splatoon 3 cloud save GRID0+ keeps for " + which + ".\n\n" +
+		"Use it after putting a different save on your Switch, so GRID0+ doesn't mix it with the old one. " +
+		"Your game keeps playing from the save on your console, and GRID0+ keeps a backup of the old cloud save " +
+		"in case you need it back (ask the server admin).\n\n**Close Splatoon 3 first**, then press Wipe."
+	r.edit(&discordgo.WebhookEdit{
+		Content: &msg,
+		Components: &[]discordgo.MessageComponent{discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.Button{Label: "Wipe my cloud save", Style: discordgo.DangerButton, CustomID: "sw:confirm:" + login},
+			discordgo.Button{Label: "Cancel", Style: discordgo.SecondaryButton, CustomID: "sw:cancel:"},
+		}}},
+	})
+}
+
+// onSaveWipeButton runs the wipe once confirmed. The account is always the
+// presser's own: GRID0+ resolves the login against the presser's Discord id,
+// so a button forwarded to someone else can only ever reach their accounts.
+func (b *Bot) onSaveWipeButton(s *discordgo.Session, i *discordgo.InteractionCreate, action, login string) {
+	msg := "Cancelled: nothing was deleted."
+	if action == "confirm" {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		res, err := b.api.WipeSplatoon3Save(ctx, i.Member.User.ID, login)
+		switch {
+		case err == nil:
+			msg = fmt.Sprintf("Done: the Splatoon 3 cloud save of **%s** is wiped (backup `%s`). "+
+				"Start the game; it will keep your console's save and upload changes from now on.", res.Login, res.Backup)
+			b.log.Info("splatoon 3 save wiped", "user", i.Member.User.ID, "login", res.Login, "backup", res.Backup)
+		case IsCode(err, "no_cloud_save"):
+			msg = "That account has no Splatoon 3 cloud save on GRID0+, so there's nothing to wipe."
+		case IsCode(err, "not_your_account"):
+			msg = "That's not one of your accounts, so I won't touch it."
+		case IsCode(err, "not_registered"):
+			msg = "You don't have a GRID0+ account yet. Run `/register` first."
+		default:
+			msg = "That didn't work. Nothing was deleted; try again later."
+			b.log.Error("wipe splatoon 3 save", "error", err)
+		}
+	}
+	// Replace the prompt, so its buttons can't be pressed twice.
+	empty := []discordgo.MessageComponent{}
+	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{Content: msg, Components: empty},
+	})
 }

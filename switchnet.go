@@ -182,6 +182,22 @@ func (c *SwitchNet) ResetPassword(ctx context.Context, discordID, username strin
 	return out, err
 }
 
+// SaveWipe is what GRID0+ answers after wiping a Splatoon 3 cloud save.
+type SaveWipe struct {
+	Login  string `json:"login"`
+	Bytes  int    `json:"bytes"`
+	Backup string `json:"backup"`
+}
+
+// WipeSplatoon3Save deletes the Splatoon 3 cloud save of one of the caller's
+// own accounts (the main one when username is empty). GRID0+ archives it
+// first and refuses the wipe if it cannot.
+func (c *SwitchNet) WipeSplatoon3Save(ctx context.Context, discordID, username string) (SaveWipe, error) {
+	var out SaveWipe
+	err := c.doJSON(ctx, "POST", "/bot/v1/splatoon3/save/wipe", discordID, map[string]string{"username": username}, &out)
+	return out, err
+}
+
 func (c *SwitchNet) Me(ctx context.Context, discordID string) (Me, error) {
 	var out Me
 	err := c.doJSON(ctx, "GET", "/bot/v1/me", discordID, nil, &out)
