@@ -70,6 +70,7 @@ var commands = []*discordgo.ApplicationCommand{
 	{Name: "online", Description: "Who is on GRID0+ right now"},
 	{Name: "status", Description: "Is GRID0+ up?"},
 	{Name: "avatar", Description: "Use your Discord avatar as your Switch profile picture"},
+	{Name: "dashboard", Description: "Admins: get a dashboard login link (works for 15 minutes, only you see it)"},
 }
 
 // commandsArePublic are answered in the channel; everything else only to
@@ -153,6 +154,7 @@ func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		"online":             b.online,
 		"status":             b.status,
 		"avatar":             b.avatar,
+		"dashboard":          b.dashboard,
 	}
 	if h, ok := handlers[name]; ok {
 		h(ctx, r, user)

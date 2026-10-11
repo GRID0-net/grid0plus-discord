@@ -18,3 +18,11 @@ switchnet:
   # GRID0+'s baas.bot_api.listen. The bot runs on the same host.
   api_url: "http://127.0.0.1:8096"
   api_token: ""
+
+dashboard:
+  # Optional: /dashboard sends an admin a login link that works for fifteen
+  # minutes. Set the token in the environment as SWITCHNET_DASHBOARD_TOKEN
+  # (GRID0+'s dashboard.token). Empty url: no /dashboard command.
+  url: ""
+  token: ""
+  admin_role_id: ""

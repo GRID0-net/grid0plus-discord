@@ -28,6 +28,17 @@ type Config struct {
 		// APIToken is baas.bot_api.token (SWITCHNET_BOT_API_TOKEN).
 		APIToken string `yaml:"api_token"`
 	} `yaml:"switchnet"`
+	Dashboard struct {
+		// URL is the dashboard's public address, without a trailing slash.
+		// Empty disables /dashboard.
+		URL string `yaml:"url"`
+		// Token is GRID0+'s dashboard.token (SWITCHNET_DASHBOARD_TOKEN). The
+		// bot signs short-lived login links with it and never shows it.
+		Token string `yaml:"token"`
+		// AdminRoleID is the role a member needs for /dashboard. Required
+		// when URL is set: a login link opens the Splatfest controls.
+		AdminRoleID string `yaml:"admin_role_id"`
+	} `yaml:"dashboard"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -48,6 +59,9 @@ func LoadConfig(path string) (Config, error) {
 	if v := os.Getenv("SWITCHNET_BOT_API_TOKEN"); v != "" {
 		cfg.SwitchNet.APIToken = v
 	}
+	if v := os.Getenv("SWITCHNET_DASHBOARD_TOKEN"); v != "" {
+		cfg.Dashboard.Token = v
+	}
 
 	var errs []error
 	if cfg.Discord.Token == "" {
@@ -61,6 +75,9 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if len(cfg.SwitchNet.APIToken) < 32 {
 		errs = append(errs, errors.New("switchnet.api_token must be baas.bot_api.token (or SWITCHNET_BOT_API_TOKEN)"))
+	}
+	if cfg.Dashboard.URL != "" && (cfg.Dashboard.Token == "" || cfg.Dashboard.AdminRoleID == "") {
+		errs = append(errs, errors.New("dashboard.url needs dashboard.token (or SWITCHNET_DASHBOARD_TOKEN) and dashboard.admin_role_id"))
 	}
 	return cfg, errors.Join(errs...)
 }
