@@ -179,6 +179,7 @@ func (b *Bot) explain(r reply, err error) {
 		"not_pending":         "That request was already answered.",
 		"not_jpeg":            "Discord didn't give me a usable picture. Try again later.",
 		"bad_friend_code":     "A friend code is 12 digits, like SW-1234-5678-9012.",
+		"bad_username":        "A login is 2 to 32 characters: lowercase letters, digits, `_` and `.`. Pick another.",
 		"no_cloud_save":       "That account has no Splatoon 3 cloud save on GRID0+, so there's nothing to wipe.",
 		"save_wipe_disabled":  "Wiping cloud saves isn't turned on on this GRID0+ server.",
 	}
