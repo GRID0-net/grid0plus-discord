@@ -198,6 +198,24 @@ func (c *SwitchNet) WipeSplatoon3Save(ctx context.Context, discordID, username s
 	return out, err
 }
 
+// SaveImport is what GRID0+ answers after importing a Splatoon 3 save.
+type SaveImport struct {
+	Login       string `json:"login"`
+	GameVersion string `json:"gameVersion"`
+	Bytes       int    `json:"bytes"`
+	Backup      string `json:"backup"` // empty when there was no record to keep
+}
+
+// ImportSplatoon3Save replaces the Splatoon 3 cloud save of one of the
+// caller's own accounts with the one inside a save.dat. GRID0+ decodes and
+// checks the file, and archives the current record first.
+func (c *SwitchNet) ImportSplatoon3Save(ctx context.Context, discordID, username string, save []byte) (SaveImport, error) {
+	var out SaveImport
+	err := c.doJSON(ctx, "POST", "/bot/v1/splatoon3/save/import", discordID,
+		map[string]any{"username": username, "save": save}, &out)
+	return out, err
+}
+
 func (c *SwitchNet) Me(ctx context.Context, discordID string) (Me, error) {
 	var out Me
 	err := c.doJSON(ctx, "GET", "/bot/v1/me", discordID, nil, &out)

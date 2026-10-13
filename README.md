@@ -23,6 +23,7 @@ for the rest of the account chores (friends, avatar, "who's on").
 | `/reset-password` | A new password. The old one stops working. `disconnect_all_accounts` defaults to true; set it to false to keep linked consoles signed in. | only you |
 | `/reset-password username:…` | A new password for that one of your accounts instead of your first (autocompletes from your own logins). | only you |
 | `/splatoon-save-wipe` | Asks to confirm, then deletes your Splatoon 3 cloud save on GRID0+ (archived on the server first). For after you put a different save on your Switch: the game plays from the console's save and uploads only changes, so the old cloud copy would otherwise mix with the new one. `username:` picks another of your accounts. | only you |
+| `/splatoon-save-upload file:` | Asks to confirm, then replaces your Splatoon 3 cloud save on GRID0+ with the one inside a `save.dat` you attach (archived on the server first). The game takes the cloud save over the one on the console, so this is how a save made elsewhere counts on GRID0+. Close Splatoon 3 first. Off unless the server has the save key table set up. `username:` picks another of your accounts. | only you |
 | `/whoami` | Login, friend code, linked consoles, friends, status | only you |
 | `/fc` | Your friend code | only you |
 | `/fc-add user:@someone` or `code:SW-…` | Sends a friend request. If they already asked you, you become friends. | only you |

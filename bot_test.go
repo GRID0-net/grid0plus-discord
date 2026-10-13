@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // The client must name the caller in X-Discord-User-ID and send the token;
@@ -230,5 +232,58 @@ func TestWipeSplatoon3SaveSendsTheLoginAndReadsTheBackup(t *testing.T) {
 	}
 	if res.Backup != "u-20261010T110000Z-wipe.pb" || res.Login != "alice" {
 		t.Errorf("decoded %+v", res)
+	}
+}
+
+// An import sends the file as base64 in JSON, which is how GRID0+ reads it.
+func TestImportSplatoon3SaveSendsTheFileAndTheLogin(t *testing.T) {
+	var got struct {
+		Username string `json:"username"`
+		Save     []byte `json:"save"`
+	}
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewEncoder(w).Encode(map[string]any{"login": "alice", "gameVersion": "11.3.0", "bytes": 9})
+	}))
+	defer srv.Close()
+	res, err := NewSwitchNet(srv.URL, "secret").ImportSplatoon3Save(t.Context(), "123456789012345678", "alice", []byte{0, 1, 0xff})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/bot/v1/splatoon3/save/import" || got.Username != "alice" || string(got.Save) != "\x00\x01\xff" {
+		t.Errorf("request %s %+v", gotPath, got)
+	}
+	if res.GameVersion != "11.3.0" || res.Backup != "" {
+		t.Errorf("decoded %+v", res)
+	}
+}
+
+// A pending upload is only ever imported for the person who sent it.
+func TestAPendingSaveIsOnlyTheUploadersToConfirm(t *testing.T) {
+	b := &Bot{pendingSaves: map[string]pendingSave{
+		"i1": {owner: "alice", data: []byte("x"), expires: time.Now().Add(time.Minute)},
+		"i2": {owner: "alice", data: []byte("y"), expires: time.Now().Add(-time.Minute)},
+	}}
+	if _, ok := b.takePendingSave("i1", "bob"); ok {
+		t.Error("bob confirmed alice's upload")
+	}
+	if p, ok := b.takePendingSave("i1", "alice"); !ok || string(p.data) != "x" {
+		t.Error("alice could not confirm her own upload")
+	}
+	if _, ok := b.takePendingSave("i1", "alice"); ok {
+		t.Error("an upload was imported twice")
+	}
+	if _, ok := b.takePendingSave("i2", "alice"); ok {
+		t.Error("an expired upload was imported")
+	}
+}
+
+func TestOnlyDiscordHostsAreFetched(t *testing.T) {
+	for _, u := range []string{"http://cdn.discordapp.com/a", "https://example.com/save.dat", "https://127.0.0.1/x"} {
+		if _, err := fetchAttachment(t.Context(), u); err == nil || !errors.Is(err, errNotDiscord) {
+			t.Errorf("%s: err = %v", u, err)
+		}
 	}
 }

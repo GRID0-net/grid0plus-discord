@@ -25,6 +25,10 @@ type Bot struct {
 	// cooldown spaces out the commands that mint a password.
 	mu       sync.Mutex
 	lastMint map[string]time.Time
+
+	// pendingSaves holds an uploaded save.dat between the prompt and the
+	// confirm button, keyed by the prompt's interaction id.
+	pendingSaves map[string]pendingSave
 }
 
 const mintCooldown = 30 * time.Second
@@ -47,6 +51,13 @@ var commands = []*discordgo.ApplicationCommand{
 	{
 		Name: "splatoon-save-wipe", Description: "Wipe your Splatoon 3 cloud save on GRID0+ (asks to confirm; kept as a backup)",
 		Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionString, Name: "username", Description: "Which of your accounts (default: the one you registered first)", Autocomplete: true},
+		},
+	},
+	{
+		Name: "splatoon-save-upload", Description: "Replace your Splatoon 3 cloud save on GRID0+ with a save.dat (asks to confirm)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionAttachment, Name: "file", Description: "Your Splatoon 3 save.dat", Required: true},
 			{Type: discordgo.ApplicationCommandOptionString, Name: "username", Description: "Which of your accounts (default: the one you registered first)", Autocomplete: true},
 		},
 	},
@@ -142,19 +153,20 @@ func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	b.log.Info("command", "name", name, "user", user.ID, "username", user.Username)
 
 	handlers := map[string]func(context.Context, reply, *discordgo.User){
-		"register":           b.register,
-		"reset-password":     b.resetPassword,
-		"splatoon-save-wipe": b.saveWipePrompt,
-		"whoami":             b.whoami,
-		"fc":                 b.fc,
-		"fc-add":             b.fcAdd,
-		"fc-pending":         b.fcPending,
-		"fc-remove":          b.fcRemove,
-		"friends":            b.friends,
-		"online":             b.online,
-		"status":             b.status,
-		"avatar":             b.avatar,
-		"dashboard":          b.dashboard,
+		"register":             b.register,
+		"reset-password":       b.resetPassword,
+		"splatoon-save-wipe":   b.saveWipePrompt,
+		"splatoon-save-upload": b.saveUploadPrompt,
+		"whoami":               b.whoami,
+		"fc":                   b.fc,
+		"fc-add":               b.fcAdd,
+		"fc-pending":           b.fcPending,
+		"fc-remove":            b.fcRemove,
+		"friends":              b.friends,
+		"online":               b.online,
+		"status":               b.status,
+		"avatar":               b.avatar,
+		"dashboard":            b.dashboard,
 	}
 	if h, ok := handlers[name]; ok {
 		h(ctx, r, user)
@@ -462,6 +474,10 @@ func (b *Bot) onButton(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		b.onSaveWipeButton(s, i, parts[1], parts[2])
 		return
 	}
+	if len(parts) == 3 && parts[0] == "su" {
+		b.onSaveUploadButton(s, i, parts[1], parts[2])
+		return
+	}
 	if len(parts) != 3 || parts[0] != "fr" {
 		return
 	}
@@ -522,7 +538,7 @@ func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreat
 		}
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{Name: name, Value: value})
 	}
-	if data.Name == "reset-password" || data.Name == "splatoon-save-wipe" {
+	if data.Name == "reset-password" || data.Name == "splatoon-save-wipe" || data.Name == "splatoon-save-upload" {
 		accounts, _ := b.api.Accounts(ctx, i.Member.User.ID)
 		for _, a := range accounts {
 			name := a.Username
