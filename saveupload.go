@@ -158,7 +158,7 @@ func (b *Bot) onSaveUploadButton(s *discordgo.Session, i *discordgo.InteractionC
 			msg += " Start the game and go online to pick it up."
 			b.log.Info("splatoon 3 save imported", "user", i.Member.User.ID, "login", res.Login, "backup", res.Backup)
 		case IsCode(err, "not_a_save"):
-			msg = "That file isn't a Splatoon 3 save.dat this server can open. It has to be the `save.dat` from Splatoon 3's save data, version 11.3.0, unedited. Nothing was changed."
+			msg = "That file isn't a Splatoon 3 save.dat this server can open. It has to be the `save.dat` from Splatoon 3's own save data, unedited. Nothing was changed."
 		case IsCode(err, "bad_save"):
 			msg = "That save.dat opened but has something GRID0+ doesn't know how to store, so nothing was changed. Tell the server admin."
 		case IsCode(err, "not_your_account"):
