@@ -104,3 +104,13 @@ go vet ./...
 
 `SWITCHNET_DISCORD_TOKEN` and `SWITCHNET_BOT_API_TOKEN` override the file, so
 a local `config.yaml` never needs to hold a secret.
+
+## Network activity
+
+The bot watches `N on GRID0+ · M playing`. N includes idle ONLINE and PLAYING
+accounts, counted once each under the server's existing presence expiry rules.
+SELF/private presences remain excluded, as in `/online`. It polls the protected
+`/bot/v1/presence-count` endpoint every 15 seconds with a five-second deadline;
+one loop handles reconnects, and unchanged counts cause no Discord update.
+An API outage displays status unavailable instead of retaining a stale number.
+This counts accounts, not physical consoles or distinct Discord owners.

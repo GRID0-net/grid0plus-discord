@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"os"
@@ -54,7 +55,16 @@ func main() {
 		}
 		log.Info("commands registered", "guild", guild, "count", len(commands))
 	}
+	ready := make(chan struct{}, 1)
+	notifyReady := func() {
+		select {
+		case ready <- struct{}{}:
+		default:
+		}
+	}
+	session.AddHandler(func(s *discordgo.Session, _ *discordgo.Resumed) { notifyReady() })
 	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		notifyReady()
 		log.Info("connected", "as", r.User.Username)
 	})
 	// GuildCreate arrives for every server the bot is in once connected, and
@@ -69,6 +79,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer session.Close()
+	activityCtx, cancelActivity := context.WithCancel(context.Background())
+	defer cancelActivity()
+	go runNetworkActivity(activityCtx, bot.api, log, ready, func(text string) error { return session.UpdateWatchStatus(0, text) })
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
