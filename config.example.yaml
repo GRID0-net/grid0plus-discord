@@ -38,6 +38,9 @@ fest:
   channel_id: ""
   # Where submitted LAN games wait for a mod. Required with mod_role_ids.
   review_channel_id: ""
+  # Where the play-open, halftime, play-over and results posts go, so the
+  # vote channel holds only the vote. Empty: they reply to the vote post.
+  announce_channel_id: ""
 
 alerts:
   # Posts when a GRID0+ service goes down and when it comes back. Empty

@@ -344,6 +344,7 @@ func (b *Bot) festAnnounce(ctx context.Context, s *discordgo.Session, f Fest, ki
 	if f.ChannelID == "" {
 		return
 	}
+	channel, voteRef := b.festAnnounceTarget(s, f)
 	claimed, err := b.api.ClaimFestPost(ctx, f.FestID, kind)
 	if err != nil || !claimed {
 		if err != nil {
@@ -356,7 +357,7 @@ func (b *Bot) festAnnounce(ctx context.Context, s *discordgo.Session, f Fest, ki
 	switch kind {
 	case "started":
 		text := "🎉 **" + f.Title + "** has started! Play until <t:" + unix(f.Timetable.End) + ":F>."
-		text += "\nNo team yet? React on the vote post above"
+		text += "\nNo team yet? React on " + voteRef
 		if !f.DiscordOnly {
 			text += " or pick one in Splatoon 3"
 		}
@@ -376,10 +377,10 @@ func (b *Bot) festAnnounce(ctx context.Context, s *discordgo.Session, f Fest, ki
 	case "ended":
 		msg.Content = "⏱️ **" + f.Title + "** is over: no more games count. Results <t:" + unix(f.Timetable.Close) + ":R>."
 	}
-	if f.MessageID != "" {
+	if f.MessageID != "" && channel == f.ChannelID {
 		msg.Reference = &discordgo.MessageReference{MessageID: f.MessageID, ChannelID: f.ChannelID}
 	}
-	if _, err := s.ChannelMessageSendComplex(f.ChannelID, msg); err != nil {
+	if _, err := s.ChannelMessageSendComplex(channel, msg); err != nil {
 		b.log.Error("fest announcement", "fest", f.FestID, "kind", kind, "error", err)
 		return
 	}
@@ -387,6 +388,22 @@ func (b *Bot) festAnnounce(ctx context.Context, s *discordgo.Session, f Fest, ki
 	if kind == "results" {
 		b.removeTeamRoles(ctx, s, f)
 	}
+}
+
+// festAnnounceTarget is the channel a fest's announcements go to, and how a
+// post there refers to the vote post: "the vote post above" when replying to
+// it, a link when it lives in another channel. Discord cannot reply across
+// channels.
+func (b *Bot) festAnnounceTarget(s *discordgo.Session, f Fest) (channel, voteRef string) {
+	channel = b.cfg.Fest.AnnounceChannelID
+	if channel == "" || channel == f.ChannelID {
+		return f.ChannelID, "the vote post above"
+	}
+	guild := b.festGuild(s, f)
+	if f.MessageID == "" || guild == "" {
+		return channel, "the vote post in <#" + f.ChannelID + ">"
+	}
+	return channel, "[the vote post](https://discord.com/channels/" + guild + "/" + f.ChannelID + "/" + f.MessageID + ")"
 }
 
 // removeTeamRoles takes the team roles back after the results. From GRID0+'s

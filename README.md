@@ -51,7 +51,10 @@ count in the same fests as GRID0+'s online players.
 | `/fest cancel` | **Mods.** Removes a vote post. A LAN-only fest is deleted with its votes and games. | only you |
 
 The bot posts on its own when play opens, the halftime report, when play
-ends, and the results, after which it takes the team roles back. In-game votes
+ends, and the results, after which it takes the team roles back. These
+reply to the vote post, unless `fest.announce_channel_id` sends them to a
+channel of their own (then they link to it), so the vote channel holds only
+the vote. In-game votes
 arrive over a stream GRID0+ keeps open (it needs `redis.url` set on GRID0+);
 after a restart the bot catches up once on votes and reactions it missed.
 

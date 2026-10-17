@@ -48,6 +48,10 @@ type Config struct {
 		ChannelID string `yaml:"channel_id"`
 		// ReviewChannelID is the mods' queue of submitted LAN games.
 		ReviewChannelID string `yaml:"review_channel_id"`
+		// AnnounceChannelID is where the play-open, halftime, play-over and
+		// results posts go, so the vote channel holds only the vote. Empty:
+		// they reply to the vote post in its own channel.
+		AnnounceChannelID string `yaml:"announce_channel_id"`
 	} `yaml:"fest"`
 	Alerts struct {
 		// ChannelID is where the bot says a GRID0+ service went down or came
