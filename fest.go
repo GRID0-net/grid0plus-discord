@@ -417,6 +417,8 @@ func festExplain(err error) string {
 		return "Each side needs one to four players (up to six losers in Tricolor), and nobody can be listed twice."
 	case "bad_kind":
 		return "The battle type is Open, Pro or Tricolor."
+	case "fest_exists":
+		return "There's already a fest up: " + apiErr.Message + "."
 	case "no_tricolor_yet":
 		return "Tricolor battles only start in the second half of the fest."
 	case "bad_tricolor":
