@@ -104,6 +104,10 @@ func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 	case discordgo.InteractionApplicationCommandAutocomplete:
 		b.onAutocomplete(s, i)
 	case discordgo.InteractionModalSubmit:
+		if strings.HasPrefix(i.ModalSubmitData().CustomID, "salmonrefuse:") {
+			b.onSalmonModal(s, i)
+			return
+		}
 		if strings.HasPrefix(i.ModalSubmitData().CustomID, "fest") {
 			b.onFestModal(s, i)
 			return
@@ -133,8 +137,15 @@ func (r reply) edit(e *discordgo.WebhookEdit) {
 
 func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	name := i.ApplicationCommandData().Name
-	if name == "fest" {
+	switch name {
+	case "fest", "fest-mod":
 		b.onFestCommand(s, i)
+		return
+	case "salmon":
+		b.onSalmonCommand(s, i)
+		return
+	case "salmon-mod", "help":
+		b.onHelpCommand(s, i)
 		return
 	}
 	if name == "link" {
@@ -489,6 +500,10 @@ func (b *Bot) onButton(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		b.onFestButton(s, i, parts[0], parts[1], parts[2])
 		return
 	}
+	if len(parts) == 3 && parts[0] == "sj" {
+		b.onSalmonButton(s, i, parts[1], parts[2])
+		return
+	}
 	if len(parts) == 3 && parts[0] == "su" {
 		b.onSaveUploadButton(s, i, parts[1], parts[2])
 		return
@@ -538,7 +553,7 @@ func (b *Bot) fcRemove(ctx context.Context, r reply, user *discordgo.User) {
 // only reaches the caller's accounts, so offering a stranger's login would be
 // offering something that cannot be used.
 func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i.ApplicationCommandData().Name == "fest" {
+	if n := i.ApplicationCommandData().Name; n == "fest" || n == "fest-mod" {
 		b.festAutocomplete(s, i)
 		return
 	}

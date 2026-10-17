@@ -43,12 +43,13 @@ count in the same fests as GRID0+'s online players.
 
 | Command | What | Who sees it |
 | --- | --- | --- |
-| `/fest create` | **Mods.** Posts a fest vote: a title, the announcement text (asked for in a form), and the three teams Alpha, Bravo and Charlie, each with a name, emoji and role. Tie it to an in-game fest with `game_fest:` (teams in the BCAT pack's order), or give `start:`/`end:` for a LAN-only fest. `channel:` overrides `fest.channel_id`. | the channel |
+| `/fest-mod create` | **Mods.** Posts a fest vote: a title, the announcement text (asked for in a form), and the three teams Alpha, Bravo and Charlie, each with a name, emoji and role. Tie it to an in-game fest with `game_fest:` (teams in the BCAT pack's order), or give `start:`/`end:` for a LAN-only fest. `channel:` overrides `fest.channel_id`. | the channel |
 | *reacting on the vote post* | Joins that team and gives its role. **The first pick is final**, as in game: a reaction for another team is taken back with a DM. Needs a GRID0+ account. Picking a team in Splatoon 3 gives the role too, the moment it happens. | |
 | `/fest submit` | Reports a LAN game you played: its `type` (Open, Pro, or Tricolor, which only opens in the second half with the halftime leader defending, so up to six losers), winners, losers, optionally each player's paint (winners first, `-` if unknown) and a screenshot. Every player needs an account and a team. The other players are pinged and can **Dispute** it. Mods get it in the review channel with Accept / Refuse; the submitter is DMed the result (and a refusal's reason). An accepted game counts exactly like an online win; missing paint is the fest's online average. | only you, plus a notice in the channel |
 | `/fest me` | Your team, games, wins, contribution and submissions in a fest. Never team totals. | only you |
 | `/fest standings` | What the game would show right now: nothing during the first half, the halftime report from the second half, the results once out. | only you |
-| `/fest cancel` | **Mods.** Removes a vote post. A LAN-only fest is deleted with its votes and games. | only you |
+| `/fest help`, `/fest-mod help` | What each command does. | only you |
+| `/fest-mod cancel` | **Mods.** Removes a vote post. A LAN-only fest is deleted with its votes and games. | only you |
 
 The bot posts on its own, pinging the three team roles, when play opens, the halftime report, when play
 ends, and the results (no Conch Shells: GRID0+ scores none, since GRID0 LAN
@@ -58,6 +59,36 @@ channel of their own (then they link to it), so the vote channel holds only
 the vote. In-game votes
 arrive over a stream GRID0+ keeps open (it needs `redis.url` set on GRID0+);
 after a restart the bot catches up once on votes and reactions it missed.
+
+**Mod commands are a command of their own** (`/fest-mod`, `/salmon-mod`),
+because Discord hides whole commands, not subcommands. They are hidden from
+everyone without Manage Server; to show them to mods, allow the mod role on
+them in **Server Settings → Integrations → the bot**. Whatever Discord shows,
+the bot only obeys `fest.mod_role_ids`.
+
+### Salmon Run over LAN
+
+On with the Splatfest settings (it uses the same mods and review channel).
+GRID0+ keeps the rank, and it is the same rank the game shows online: a
+player who only ever plays over LAN opens Salmon Run online at the rank they
+earned.
+
+| Command | What | Who sees it |
+| --- | --- | --- |
+| `/salmon request teammate1: [teammate2:] [teammate3:] [modded:]` | Sets up a job for you and 1–3 teammates (all need an account). Answers the current rotation's stage and the hazard level: each player's rank as a number (title × 100 + points, Eggsecutive VP 800 + points, at most 1665), averaged, × 0.2%, to the nearest 5%, at most 333%. Weapons stay on random. Above 200% without `modded:True` (the host has the IPS patches that allow going above 200%), the job is played at 200% and a clear is worth +10. | the channel |
+| `/salmon report job: result: [disconnect:]` | A player reports a clear or the wave lost in. `disconnect:True` means a teammate disconnected, which halves a loss's cost (−10/−5/0) as in game. Goes to the review channel; nothing moves until a mod accepts. Everyone is DMed their new rank. | only you |
+| `/salmon rank [user:]` | A rank and Eggsecutive VP stage badges (bronze 400, silver 600, gold 999). | only you |
+| `/salmon help`, `/salmon-mod help` | What each command does. | only you |
+
+Points: clear +20, lost in wave 1 −20, wave 2 −10, wave 3 0. Each new
+rotation keeps the title and resets the points to 40 (200/300/400 at
+Eggsecutive VP with that stage's badge), online and over LAN alike. A job
+can't be reported or accepted after its rotation ends.
+
+### Help
+
+`/help` lists what you can use, and `/help category:` explains one category.
+Mod categories show only to mods.
 
 ### Downtime alerts
 

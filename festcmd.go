@@ -25,7 +25,9 @@ func festPicker(desc string) *discordgo.ApplicationCommandOption {
 }
 
 // festCommand is /fest. Registered only when fest.mod_role_ids is set.
-func festCommand() *discordgo.ApplicationCommand {
+// festCommands are /fest, for everyone, and /fest-mod, for mods: Discord
+// hides whole commands, never single subcommands.
+func festCommands() (*discordgo.ApplicationCommand, *discordgo.ApplicationCommand) {
 	create := []*discordgo.ApplicationCommandOption{
 		{Type: discordgo.ApplicationCommandOptionString, Name: "title", Description: "The fest's name, e.g. Custom Frostyfest!", Required: true, MaxLength: 200},
 	}
@@ -58,17 +60,29 @@ func festCommand() *discordgo.ApplicationCommand {
 		{Type: discordgo.ApplicationCommandOptionAttachment, Name: "screenshot", Description: "A picture of the results screen"},
 		festPicker("Which fest (default: the one being played)"),
 	}
+	help := &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "help", Description: "What these commands do"}
 	return &discordgo.ApplicationCommand{
-		Name: "fest", Description: "Splatfests: vote posts, LAN games, your record",
+		Name: "fest", Description: "Splatfests: LAN games, your record, the standings",
 		Options: []*discordgo.ApplicationCommandOption{
-			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "create", Description: "Mods: post a fest vote (asks for the text next)", Options: create},
 			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "submit", Description: "Report a LAN game you played, for a mod to check", Options: submit},
 			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "me", Description: "Your team, games and contribution in a fest",
 				Options: []*discordgo.ApplicationCommandOption{festPicker("Which fest (default: the latest)")}},
 			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "standings", Description: "What the game shows about a fest right now",
 				Options: []*discordgo.ApplicationCommandOption{festPicker("Which fest (default: the latest)")}},
-			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "cancel", Description: "Mods: remove a fest's vote post (a LAN-only fest loses its votes and games)",
+			help,
+		},
+	}, &discordgo.ApplicationCommand{
+		Name: "fest-mod", Description: "Mods: post and remove Splatfest vote posts",
+		// Hidden from members without Manage Server until an admin allows the
+		// mod role in Server Settings > Integrations. Who may use it is still
+		// checked against fest.mod_role_ids on every use: an admin can change
+		// what Discord shows, not who the bot obeys.
+		DefaultMemberPermissions: ptr(int64(discordgo.PermissionManageGuild)),
+		Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "create", Description: "Post a fest vote (asks for the text next)", Options: create},
+			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "cancel", Description: "Remove a fest's vote post (a LAN-only fest loses its votes and games)",
 				Options: []*discordgo.ApplicationCommandOption{{Type: discordgo.ApplicationCommandOptionString, Name: "fest", Description: "Which fest", Required: true, Autocomplete: true}}},
+			help,
 		},
 	}
 }
@@ -106,7 +120,15 @@ func optInt(opts map[string]*discordgo.ApplicationCommandInteractionDataOption, 
 // onFestCommand answers /fest. create opens a form first, so it is handled
 // before the deferral every other subcommand gets.
 func (b *Bot) onFestCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	sub, opts := subcommand(i.ApplicationCommandData())
+	data := i.ApplicationCommandData()
+	sub, opts := subcommand(data)
+	if data.Name == "fest-mod" && !b.isMod(i.Member) {
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{Content: "Only mods can use `/fest-mod`.", Flags: discordgo.MessageFlagsEphemeral},
+		})
+		return
+	}
 	if sub == "create" {
 		b.festCreateForm(s, i, opts)
 		return
@@ -115,13 +137,13 @@ func (b *Bot) onFestCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{Flags: discordgo.MessageFlagsEphemeral},
 	}); err != nil {
-		b.log.Warn("defer interaction", "command", "fest "+sub, "error", err)
+		b.log.Warn("defer interaction", "command", data.Name+" "+sub, "error", err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	r := reply{s, i}
-	b.log.Info("command", "name", "fest "+sub, "user", i.Member.User.ID)
+	b.log.Info("command", "name", data.Name+" "+sub, "user", i.Member.User.ID)
 	switch sub {
 	case "submit":
 		b.festSubmit(ctx, r, opts)
@@ -131,6 +153,8 @@ func (b *Bot) onFestCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 		b.festStandings(ctx, r, opts)
 	case "cancel":
 		b.festCancelPrompt(ctx, r, opts)
+	case "help":
+		r.edit(&discordgo.WebhookEdit{Embeds: &[]*discordgo.MessageEmbed{b.helpEmbed(data.Name, i.Member)}})
 	}
 }
 
@@ -288,7 +312,7 @@ func (b *Bot) festCreate(ctx context.Context, r reply, pendingID, description st
 	delete(b.fest.creating, pendingID)
 	b.fest.mu.Unlock()
 	if !ok || p.owner != r.i.Member.User.ID {
-		r.text("That form expired. Run `/fest create` again.")
+		r.text("That form expired. Run `/fest-mod create` again.")
 		return
 	}
 	p.in.Description, p.in.ChannelID = description, p.channel

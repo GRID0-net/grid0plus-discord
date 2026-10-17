@@ -43,9 +43,10 @@ func main() {
 		lastMint: map[string]time.Time{},
 		fest:     newFestState(),
 	}
-	commands := commands
+	commands := append(commands, helpCommand())
 	if cfg.festEnabled() {
-		commands = append(commands, festCommand())
+		fest, festMod := festCommands()
+		commands = append(commands, fest, festMod, salmonCommand(), salmonModCommand())
 		session.AddHandler(bot.onReactionAdd)
 	}
 	session.AddHandler(bot.onInteraction)
