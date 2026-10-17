@@ -78,6 +78,13 @@ func (b *Bot) vote(ctx context.Context, s *discordgo.Session, guildID string, f 
 	}
 	if created {
 		b.log.Info("fest vote", "fest", f.FestID, "user", userID, "team", team)
+		if !f.DiscordOnly {
+			// The game reads its team from the save GRID0+ hands it at
+			// startup, so a running game keeps showing "pick a team" until
+			// it restarts -- and picking there freezes it.
+			b.dm(s, userID, "You're on "+teamLabel(f, team)+" in **"+f.Title+"**! If Splatoon 3 is open, close it and start it again "+
+				"to see your team in game. Don't pick a team in game before that.")
+		}
 	}
 }
 
