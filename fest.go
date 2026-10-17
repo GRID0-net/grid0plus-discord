@@ -222,6 +222,15 @@ var categoryNames = []struct{ key, name string }{
 
 // festShares lists one ranking, keeping only this fest's teams: GRID0+
 // always ranks three, and a two-team fest has no Charlie.
+func anyShare(shares []TeamShare) bool {
+	for _, s := range shares {
+		if s.Ratio > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func festShares(f Fest, shares []TeamShare) []string {
 	var lines []string
 	place := 0
@@ -258,6 +267,12 @@ func resultsEmbed(f Fest, st Standings) *discordgo.MessageEmbed {
 		e.Description = "It's a tie!"
 	}
 	for _, c := range categoryNames {
+		// GRID0+ scores no Conch Shells (GRID0 LAN players can't earn any it
+		// sees), and a category nobody played is all zeros: neither says
+		// anything worth a row.
+		if c.key == "Yobisai" || !anyShare(st.Final.Categories[c.key]) {
+			continue
+		}
 		if lines := festShares(f, st.Final.Categories[c.key]); len(lines) > 0 {
 			e.Fields = append(e.Fields, &discordgo.MessageEmbedField{Name: c.name, Value: strings.Join(lines, "\n"), Inline: true})
 		}

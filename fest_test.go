@@ -108,14 +108,16 @@ func TestResultsListOnlyTheFestsTeams(t *testing.T) {
 	var st Standings
 	_ = json.Unmarshal([]byte(`{"phase":"closed","final":{"winner":"Bravo",
 		"categories":{"PlayerCount":[{"team":"Bravo","ratio":0.6},{"team":"Alpha","ratio":0.4},{"team":"Charlie","ratio":0}],
-		"Challenge":[{"team":"Bravo","ratio":0.6}]},
+		"Challenge":[{"team":"Bravo","ratio":0.6}],
+		"Yobisai":[{"team":"Bravo","ratio":0.6}],
+		"Tricolor":[{"team":"Bravo","ratio":0},{"team":"Alpha","ratio":0}]},
 		"points":[{"team":"Bravo","points":300},{"team":"Alpha","points":150},{"team":"Charlie","points":0}]}}`), &st)
 	e := resultsEmbed(f, st)
 	text := e.Description
 	for _, fl := range e.Fields {
 		text += fl.Name + fl.Value
 	}
-	if strings.Contains(text, "Charlie") || !strings.Contains(text, "Pro") || !strings.Contains(text, "Snowmen") || !strings.Contains(text, "60.00%") {
+	if strings.Contains(text, "Charlie") || !strings.Contains(text, "Pro") || strings.Contains(text, "Conch") || strings.Contains(text, "Tricolor") || !strings.Contains(text, "Snowmen") || !strings.Contains(text, "60.00%") {
 		t.Errorf("results = %s", text)
 	}
 }
