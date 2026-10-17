@@ -231,7 +231,8 @@ func anyShare(shares []TeamShare) bool {
 	return false
 }
 
-func festShares(f Fest, shares []TeamShare) []string {
+// festShares lists teams best first, with their share when ratios is set.
+func festShares(f Fest, shares []TeamShare, ratios bool) []string {
 	var lines []string
 	place := 0
 	for _, s := range shares {
@@ -239,14 +240,20 @@ func festShares(f Fest, shares []TeamShare) []string {
 			continue
 		}
 		place++
-		lines = append(lines, fmt.Sprintf("%d. %s: %s", place, teamLabel(f, s.Team), percent(s.Ratio)))
+		line := fmt.Sprintf("%d. %s", place, teamLabel(f, s.Team))
+		if ratios {
+			line += ": " + percent(s.Ratio)
+		}
+		lines = append(lines, line)
 	}
 	return lines
 }
 
 func halftimeEmbed(f Fest, st Standings) *discordgo.MessageEmbed {
 	desc := "Play is open until <t:" + strconv.FormatInt(f.Timetable.End.Unix(), 10) + ":F>.\n\n"
-	if lines := festShares(f, st.Midterm); len(lines) > 0 {
+	// Places only: the game's halftime report ranks the teams without
+	// showing their shares.
+	if lines := festShares(f, st.Midterm, false); len(lines) > 0 {
 		desc += strings.Join(lines, "\n")
 	} else {
 		desc += "Nobody has joined a team yet."
@@ -273,7 +280,7 @@ func resultsEmbed(f Fest, st Standings) *discordgo.MessageEmbed {
 		if c.key == "Yobisai" || !anyShare(st.Final.Categories[c.key]) {
 			continue
 		}
-		if lines := festShares(f, st.Final.Categories[c.key]); len(lines) > 0 {
+		if lines := festShares(f, st.Final.Categories[c.key], true); len(lines) > 0 {
 			e.Fields = append(e.Fields, &discordgo.MessageEmbedField{Name: c.name, Value: strings.Join(lines, "\n"), Inline: true})
 		}
 	}
