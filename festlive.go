@@ -113,6 +113,7 @@ func (b *Bot) giveTeamRole(s *discordgo.Session, guildID string, f Fest, userID,
 				"fest", f.FestID, "role", t.RoleID, "error", err)
 			return
 		}
+		b.log.Info("team role given", "fest", f.FestID, "user", userID, "team", team)
 	}
 	for _, other := range f.Teams {
 		if other.Team != team && slices.Contains(member.Roles, other.RoleID) {
