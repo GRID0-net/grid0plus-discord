@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -389,6 +390,18 @@ func (b *Bot) festAnnounce(ctx context.Context, s *discordgo.Session, f Fest, ki
 		}
 	case "ended":
 		msg.Content = "⏱️ **" + f.Title + "** is over: no more games count. Results <t:" + unix(f.Timetable.Close) + ":R>."
+	}
+	// Fest news pings the three team roles, as the operator asked; only those
+	// roles, whatever else the text happens to contain.
+	var pings []string
+	for _, t := range f.Teams {
+		if t.RoleID != "" {
+			pings = append(pings, "<@&"+t.RoleID+">")
+			msg.AllowedMentions.Roles = append(msg.AllowedMentions.Roles, t.RoleID)
+		}
+	}
+	if len(pings) > 0 {
+		msg.Content = strings.TrimSpace(strings.Join(pings, " ") + "\n" + msg.Content)
 	}
 	if f.MessageID != "" && channel == f.ChannelID {
 		msg.Reference = &discordgo.MessageReference{MessageID: f.MessageID, ChannelID: f.ChannelID}

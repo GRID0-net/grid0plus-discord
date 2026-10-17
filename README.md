@@ -50,7 +50,7 @@ count in the same fests as GRID0+'s online players.
 | `/fest standings` | What the game would show right now: nothing during the first half, the halftime report from the second half, the results once out. | only you |
 | `/fest cancel` | **Mods.** Removes a vote post. A LAN-only fest is deleted with its votes and games. | only you |
 
-The bot posts on its own when play opens, the halftime report, when play
+The bot posts on its own, pinging the three team roles, when play opens, the halftime report, when play
 ends, and the results (no Conch Shells: GRID0+ scores none, since GRID0 LAN
 players can't earn any it sees), after which it takes the team roles back. These
 reply to the vote post, unless `fest.announce_channel_id` sends them to a
