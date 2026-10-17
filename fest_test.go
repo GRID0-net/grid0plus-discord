@@ -182,3 +182,15 @@ func TestASubmissionRefusalNamesThePlayers(t *testing.T) {
 		t.Errorf("explanation = %q", msg)
 	}
 }
+
+func TestAnnouncementsReplyToTheVotePostUnlessTheyHaveTheirOwnChannel(t *testing.T) {
+	b := &Bot{}
+	f := Fest{ChannelID: "100", MessageID: "200"}
+	if ch, ref := b.festAnnounceTarget(nil, f); ch != "100" || ref != "the vote post above" {
+		t.Fatalf("no announce channel: got %q %q", ch, ref)
+	}
+	b.cfg.Fest.AnnounceChannelID = "100"
+	if ch, _ := b.festAnnounceTarget(nil, f); ch != "100" {
+		t.Fatalf("announce channel = vote channel: got %q", ch)
+	}
+}

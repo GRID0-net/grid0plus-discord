@@ -242,11 +242,11 @@ func halftimeEmbed(f Fest, st Standings) *discordgo.MessageEmbed {
 	} else {
 		desc += "Nobody has joined a team yet."
 	}
-	return &discordgo.MessageEmbed{Title: f.Title + ": halftime report", Description: desc, Color: festColour}
+	return &discordgo.MessageEmbed{Title: "Halftime report: " + f.Title, Description: desc, Color: festColour}
 }
 
 func resultsEmbed(f Fest, st Standings) *discordgo.MessageEmbed {
-	e := &discordgo.MessageEmbed{Title: f.Title + ": results", Color: festColour}
+	e := &discordgo.MessageEmbed{Title: "Results: " + f.Title, Color: festColour}
 	if st.Final == nil {
 		e.Description = "Nobody joined, so there is no winner."
 		return e
