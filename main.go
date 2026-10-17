@@ -33,14 +33,20 @@ func main() {
 		log.Error("discord session", "error", err)
 		os.Exit(1)
 	}
-	// Slash commands need no privileged intents: guild events only.
-	session.Identify.Intents = discordgo.IntentsGuilds
+	// No privileged intents: guild events, plus reactions for fest votes.
+	session.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessageReactions
 
 	bot := &Bot{
 		cfg:      cfg,
 		api:      NewSwitchNet(cfg.SwitchNet.APIURL, cfg.SwitchNet.APIToken),
 		log:      log,
 		lastMint: map[string]time.Time{},
+		fest:     newFestState(),
+	}
+	commands := commands
+	if cfg.festEnabled() {
+		commands = append(commands, festCommand())
+		session.AddHandler(bot.onReactionAdd)
 	}
 	session.AddHandler(bot.onInteraction)
 	registerIn := func(s *discordgo.Session, guild string) {
@@ -81,7 +87,27 @@ func main() {
 	defer session.Close()
 	activityCtx, cancelActivity := context.WithCancel(context.Background())
 	defer cancelActivity()
-	go runNetworkActivity(activityCtx, bot.api, log, ready, func(text string) error { return session.UpdateWatchStatus(0, text) })
+	// One ready signal per consumer: a buffered channel hands each signal to
+	// only one reader.
+	activityReady, festReady, postsReady, alertsReady := make(chan struct{}, 1), make(chan struct{}, 1), make(chan struct{}, 1), make(chan struct{}, 1)
+	go func() {
+		for range ready {
+			for _, c := range []chan struct{}{activityReady, festReady, postsReady, alertsReady} {
+				select {
+				case c <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}()
+	go runNetworkActivity(activityCtx, bot.api, log, activityReady, func(text string) error { return session.UpdateWatchStatus(0, text) })
+	if cfg.festEnabled() {
+		go bot.runFestEvents(activityCtx, session, festReady)
+		go bot.runFestPosts(activityCtx, session, postsReady)
+	}
+	if cfg.Alerts.ChannelID != "" {
+		go bot.runAlerts(activityCtx, session, alertsReady)
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

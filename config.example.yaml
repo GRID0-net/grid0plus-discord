@@ -26,3 +26,25 @@ dashboard:
   url: ""
   token: ""
   admin_role_id: ""
+
+fest:
+  # Splatfests run from Discord: /fest create (mods), voting by reaction,
+  # LAN game submissions a mod reviews. Empty mod_role_ids: no fest commands.
+  # The bot needs Manage Roles (and its role above every team role), Add
+  # Reactions and Manage Messages in the fest channel.
+  mod_role_ids: []
+  # Default channel for a fest's vote post and announcements; /fest create
+  # can name another. Empty: the channel the command is run in.
+  channel_id: ""
+  # Where submitted LAN games wait for a mod. Required with mod_role_ids.
+  review_channel_id: ""
+
+alerts:
+  # Posts when a GRID0+ service goes down and when it comes back. Empty
+  # channel_id: no alerts.
+  channel_id: ""
+  ping_role_id: ""
+  interval_seconds: 60
+  # Reads in a row a service must fail before it is reported: a deploy
+  # restarts every service for a few seconds.
+  down_after: 3

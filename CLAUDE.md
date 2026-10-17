@@ -38,6 +38,16 @@ there, not here.
 Commands are registered per guild on every connect (bulk overwrite), so a
 removed command disappears on the next restart.
 
+## Splatfests
+
+`fest*.go` is the same split: GRID0+ (`internal/baas/botfest.go`) owns the
+first-pick rule, submission validation and the standings, which are
+phase-gated exactly as the game shows them. Don't compute team totals here,
+and don't let `/fest me` show anything but the caller's own record. Mod
+checks are `fest.mod_role_ids`, never Discord permissions. In-game votes
+arrive over `GET /bot/v1/fest-events`; there is no polling loop, keep it
+that way.
+
 ## Commits
 
 Plain declarative sentences, no `feat:` tags. Commit directly to `main`.

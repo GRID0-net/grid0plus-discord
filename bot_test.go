@@ -282,7 +282,7 @@ func TestAPendingSaveIsOnlyTheUploadersToConfirm(t *testing.T) {
 
 func TestOnlyDiscordHostsAreFetched(t *testing.T) {
 	for _, u := range []string{"http://cdn.discordapp.com/a", "https://example.com/save.dat", "https://127.0.0.1/x"} {
-		if _, err := fetchAttachment(t.Context(), u); err == nil || !errors.Is(err, errNotDiscord) {
+		if _, err := fetchAttachment(t.Context(), u, maxSaveFile); err == nil || !errors.Is(err, errNotDiscord) {
 			t.Errorf("%s: err = %v", u, err)
 		}
 	}

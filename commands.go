@@ -29,6 +29,9 @@ type Bot struct {
 	// pendingSaves holds an uploaded save.dat between the prompt and the
 	// confirm button, keyed by the prompt's interaction id.
 	pendingSaves map[string]pendingSave
+
+	// fest is the Splatfest cache; see fest.go.
+	fest *festState
 }
 
 const mintCooldown = 30 * time.Second
@@ -101,6 +104,10 @@ func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 	case discordgo.InteractionApplicationCommandAutocomplete:
 		b.onAutocomplete(s, i)
 	case discordgo.InteractionModalSubmit:
+		if strings.HasPrefix(i.ModalSubmitData().CustomID, "fest") {
+			b.onFestModal(s, i)
+			return
+		}
 		b.onLinkSubmit(s, i)
 	}
 }
@@ -126,6 +133,10 @@ func (r reply) edit(e *discordgo.WebhookEdit) {
 
 func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	name := i.ApplicationCommandData().Name
+	if name == "fest" {
+		b.onFestCommand(s, i)
+		return
+	}
 	if name == "link" {
 		// A form, not command options: a password typed as an option would
 		// sit in the person's command history.
@@ -474,6 +485,10 @@ func (b *Bot) onButton(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		b.onSaveWipeButton(s, i, parts[1], parts[2])
 		return
 	}
+	if len(parts) == 3 && (parts[0] == "fs" || parts[0] == "fx") {
+		b.onFestButton(s, i, parts[0], parts[1], parts[2])
+		return
+	}
 	if len(parts) == 3 && parts[0] == "su" {
 		b.onSaveUploadButton(s, i, parts[1], parts[2])
 		return
@@ -523,6 +538,10 @@ func (b *Bot) fcRemove(ctx context.Context, r reply, user *discordgo.User) {
 // only reaches the caller's accounts, so offering a stranger's login would be
 // offering something that cannot be used.
 func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.ApplicationCommandData().Name == "fest" {
+		b.festAutocomplete(s, i)
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	data := i.ApplicationCommandData()

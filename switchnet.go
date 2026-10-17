@@ -29,6 +29,8 @@ type APIError struct {
 	Status  int
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// DiscordUserIDs names the players a LAN game submission failed on.
+	DiscordUserIDs []string `json:"discordUserIds"`
 }
 
 func (e *APIError) Error() string {

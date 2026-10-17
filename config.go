@@ -39,6 +39,34 @@ type Config struct {
 		// when URL is set: a login link opens the Splatfest controls.
 		AdminRoleID string `yaml:"admin_role_id"`
 	} `yaml:"dashboard"`
+	Fest struct {
+		// ModRoleIDs are the roles that may create a fest's vote post and
+		// review LAN games. Empty turns the fest commands off.
+		ModRoleIDs []string `yaml:"mod_role_ids"`
+		// ChannelID is where a vote post and its announcements go when /fest
+		// create names no channel. Empty: the channel the command is run in.
+		ChannelID string `yaml:"channel_id"`
+		// ReviewChannelID is the mods' queue of submitted LAN games.
+		ReviewChannelID string `yaml:"review_channel_id"`
+	} `yaml:"fest"`
+	Alerts struct {
+		// ChannelID is where the bot says a GRID0+ service went down or came
+		// back. Empty turns the alerts off.
+		ChannelID string `yaml:"channel_id"`
+		// PingRoleID is pinged when something goes down. Optional.
+		PingRoleID string `yaml:"ping_role_id"`
+		// IntervalSeconds is how often GRID0+'s health is read (default 60).
+		IntervalSeconds int `yaml:"interval_seconds"`
+		// DownAfter is how many reads in a row a service must fail before it
+		// is reported (default 3): a deploy restarts every service, and that
+		// is not an outage worth a ping.
+		DownAfter int `yaml:"down_after"`
+	} `yaml:"alerts"`
+}
+
+// festEnabled reports whether the fest commands are configured.
+func (c Config) festEnabled() bool {
+	return len(c.Fest.ModRoleIDs) > 0 && c.Fest.ReviewChannelID != ""
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -78,6 +106,15 @@ func LoadConfig(path string) (Config, error) {
 	}
 	if cfg.Dashboard.URL != "" && (cfg.Dashboard.Token == "" || cfg.Dashboard.AdminRoleID == "") {
 		errs = append(errs, errors.New("dashboard.url needs dashboard.token (or SWITCHNET_DASHBOARD_TOKEN) and dashboard.admin_role_id"))
+	}
+	if len(cfg.Fest.ModRoleIDs) > 0 && cfg.Fest.ReviewChannelID == "" {
+		errs = append(errs, errors.New("fest.mod_role_ids needs fest.review_channel_id, where mods review LAN games"))
+	}
+	if cfg.Alerts.IntervalSeconds <= 0 {
+		cfg.Alerts.IntervalSeconds = 60
+	}
+	if cfg.Alerts.DownAfter <= 0 {
+		cfg.Alerts.DownAfter = 3
 	}
 	return cfg, errors.Join(errs...)
 }

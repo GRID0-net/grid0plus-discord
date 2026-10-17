@@ -49,7 +49,7 @@ func (b *Bot) saveUploadPrompt(ctx context.Context, r reply, user *discordgo.Use
 		r.text("That file is too big to be a Splatoon 3 save.dat.")
 		return
 	}
-	save, err := fetchAttachment(ctx, att.URL)
+	save, err := fetchAttachment(ctx, att.URL, maxSaveFile)
 	if err != nil {
 		b.log.Error("download save upload", "error", err)
 		r.text("I couldn't download that file from Discord. Try again.")
@@ -89,7 +89,7 @@ func (b *Bot) saveUploadPrompt(ctx context.Context, r reply, user *discordgo.Use
 // fetchAttachment downloads a Discord attachment. Only Discord's own CDN
 // hosts are fetched: the URL comes from Discord's payload, and this keeps
 // the bot from being pointed anywhere else.
-func fetchAttachment(ctx context.Context, raw string) ([]byte, error) {
+func fetchAttachment(ctx context.Context, raw string, limit int) ([]byte, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return nil, err
@@ -109,12 +109,12 @@ func fetchAttachment(ctx context.Context, raw string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("discord cdn: %s", resp.Status)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSaveFile+1))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > maxSaveFile {
-		return nil, fmt.Errorf("attachment over %d bytes", maxSaveFile)
+	if len(data) > limit {
+		return nil, fmt.Errorf("attachment over %d bytes", limit)
 	}
 	return data, nil
 }
