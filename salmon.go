@@ -267,17 +267,23 @@ func salmonJobEmbed(j SalmonJob) *discordgo.MessageEmbed {
 		players = append(players, line)
 	}
 	e := &discordgo.MessageEmbed{
-		Title: "Salmon Run job " + j.ID, Color: 0xff6a00,
+		Title: "Salmon Run job", Color: 0xff6a00,
 		Description: fmt.Sprintf("Stage: **%s**\nHazard level: **%d%%**\n"+
 			"Leave every weapon on **random**: don't choose one.", j.Stage, j.Played),
-		Fields: []*discordgo.MessageEmbedField{{Name: "Players", Value: strings.Join(players, "\n")}},
+		Fields: []*discordgo.MessageEmbedField{
+			// Its own field, in a code block: it is what /salmon report asks
+			// for, and a code block is easy to read and copy on a phone.
+			{Name: "Job ID", Value: "```" + j.ID + "```"},
+			{Name: "Players", Value: strings.Join(players, "\n")},
+		},
 	}
 	if j.HalfWin {
 		e.Description += fmt.Sprintf("\n⚠️ Your ranks call for **%d%%**, above what the game allows without the IPS patches, "+
 			"so play at **200%%**: a clear is worth +10 instead of +20. A host with the patches can request again with `modded:True`.", j.Hazard)
 	}
 	if j.Status == "requested" {
-		e.Footer = &discordgo.MessageEmbedFooter{Text: "When you're done: /salmon report job:" + j.ID}
+		e.Fields = append(e.Fields, &discordgo.MessageEmbedField{Name: "When you're done",
+			Value: "`/salmon report job:" + j.ID + " result:...`"})
 	}
 	if res := j.Result; res != nil {
 		how := "Cleared"
@@ -422,7 +428,7 @@ func salmonExplain(err error) string {
 	case IsCode(err, "no_rotation"):
 		return "No regular Salmon Run rotation is open right now (a Big Run, or nothing scheduled), so ranks can't move."
 	case IsCode(err, "no_job"):
-		return "There's no job with that id. It's the code in the title of the /salmon request answer."
+		return "There's no job with that id. It's the code under **Job ID** in the /salmon request answer."
 	case IsCode(err, "not_a_player"):
 		return "Only a player in that job can do that."
 	case IsCode(err, "bad_wave"):
