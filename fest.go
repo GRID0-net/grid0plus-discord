@@ -258,11 +258,6 @@ func resultsEmbed(f Fest, st Standings) *discordgo.MessageEmbed {
 		e.Description = "It's a tie!"
 	}
 	for _, c := range categoryNames {
-		// A Discord-only fest has no Pro or Tricolor battles; those rankings
-		// would only repeat the vote.
-		if f.DiscordOnly && (c.key == "Challenge" || c.key == "Tricolor") {
-			continue
-		}
 		if lines := festShares(f, st.Final.Categories[c.key]); len(lines) > 0 {
 			e.Fields = append(e.Fields, &discordgo.MessageEmbedField{Name: c.name, Value: strings.Join(lines, "\n"), Inline: true})
 		}
@@ -285,6 +280,17 @@ func mentionList(ids []string) string {
 		out = append(out, "<@"+id+">")
 	}
 	return strings.Join(out, " ")
+}
+
+// kindName is a LAN game kind as the game names the battle.
+func kindName(kind string) string {
+	switch kind {
+	case "pro":
+		return "Pro"
+	case "tricolor":
+		return "Tricolor"
+	}
+	return "Open"
 }
 
 func submissionSides(s Submission) (winners, losers []string) {
@@ -311,12 +317,27 @@ func paintLine(s Submission) string {
 }
 
 func reviewEmbed(f Fest, s Submission, screenshot string) *discordgo.MessageEmbed {
-	winners, losers := submissionSides(s)
+	winners, _ := submissionSides(s)
+	var beaten []string
+	for _, t := range f.Teams {
+		if t.Team == s.WinningTeam {
+			continue
+		}
+		var ids []string
+		for _, p := range s.Players {
+			if p.Team == t.Team {
+				ids = append(ids, p.DiscordUserID)
+			}
+		}
+		if len(ids) > 0 {
+			beaten = append(beaten, teamLabel(f, t.Team)+" "+mentionList(ids))
+		}
+	}
 	e := &discordgo.MessageEmbed{
-		Title: "LAN game in " + f.Title,
+		Title: kindName(s.Kind) + " LAN game in " + f.Title,
 		Color: festColour,
 		Description: teamLabel(f, s.WinningTeam) + " " + mentionList(winners) + "\nbeat\n" +
-			teamLabel(f, s.LosingTeam) + " " + mentionList(losers),
+			strings.Join(beaten, "\nand\n"),
 		Fields: []*discordgo.MessageEmbedField{
 			{Name: "Submitted by", Value: "<@" + s.SubmittedBy + "> <t:" + strconv.FormatInt(s.CreatedAt.Unix(), 10) + ":R>", Inline: true},
 			{Name: "Paint", Value: paintLine(s)},
@@ -378,7 +399,13 @@ func festExplain(err error) string {
 	case "not_in_play":
 		return "Games can only be submitted while the fest is being played."
 	case "bad_players":
-		return "Each side needs one to four players, and nobody can be listed twice."
+		return "Each side needs one to four players (up to six losers in Tricolor), and nobody can be listed twice."
+	case "bad_kind":
+		return "The battle type is Open, Pro or Tricolor."
+	case "no_tricolor_yet":
+		return "Tricolor battles only start in the second half of the fest."
+	case "bad_tricolor":
+		return "That isn't a Tricolor lineup: " + apiErr.Message + "."
 	case "bad_paint":
 		return "Paint is a number from 0 to 9999 for each player."
 	case "no_such_fest":

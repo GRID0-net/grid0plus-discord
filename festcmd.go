@@ -50,6 +50,10 @@ func festCommand() *discordgo.ApplicationCommand {
 		user("loser1", "A player on the losing team", true),
 		user("winner2", "Another winner", false), user("winner3", "Another winner", false), user("winner4", "Another winner", false),
 		user("loser2", "Another loser", false), user("loser3", "Another loser", false), user("loser4", "Another loser", false),
+		user("loser5", "Tricolor only: another loser", false), user("loser6", "Tricolor only: another loser", false),
+		{Type: discordgo.ApplicationCommandOptionString, Name: "type", Description: "What kind of battle (default: Open)", Choices: []*discordgo.ApplicationCommandOptionChoice{
+			{Name: "Open", Value: "open"}, {Name: "Pro", Value: "pro"}, {Name: "Tricolor (second half only)", Value: "tricolor"},
+		}},
 		{Type: discordgo.ApplicationCommandOptionString, Name: "paint", Description: "Each player's paint, winners then losers, e.g. 1203 980 - 850 (- if unknown)"},
 		{Type: discordgo.ApplicationCommandOptionAttachment, Name: "screenshot", Description: "A picture of the results screen"},
 		festPicker("Which fest (default: the one being played)"),
@@ -471,12 +475,12 @@ func (b *Bot) festSubmit(ctx context.Context, r reply, opts map[string]*discordg
 			winners = append(winners, id)
 		}
 	}
-	for n := 1; n <= 4; n++ {
+	for n := 1; n <= 6; n++ {
 		if id := optString(opts, fmt.Sprintf("loser%d", n)); id != "" {
 			losers = append(losers, id)
 		}
 	}
-	in := SubmitGame{Winners: winners, Losers: losers}
+	in := SubmitGame{Kind: optString(opts, "type"), Winners: winners, Losers: losers}
 	if p := optString(opts, "paint"); p != "" {
 		paint, err := parsePaint(p, append(append([]string{}, winners...), losers...))
 		if err != nil {

@@ -99,6 +99,7 @@ type Submission struct {
 	ID                  string             `json:"id"`
 	FestID              string             `json:"festId"`
 	SubmittedBy         string             `json:"submittedBy"`
+	Kind                string             `json:"kind"`
 	WinningTeam         string             `json:"winningTeam"`
 	LosingTeam          string             `json:"losingTeam"`
 	Players             []SubmissionPlayer `json:"players"`
@@ -114,6 +115,7 @@ type Submission struct {
 }
 
 type SubmitGame struct {
+	Kind          string           `json:"kind,omitempty"`
 	Winners       []string         `json:"winners"`
 	Losers        []string         `json:"losers"`
 	Paint         map[string]int64 `json:"paint,omitempty"`

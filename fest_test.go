@@ -99,7 +99,8 @@ func TestEachAnnouncementIsMadeOnceAndOnlyInItsWindow(t *testing.T) {
 }
 
 // What a two-team result would show must never list a team the fest does
-// not have, even though GRID0+ always ranks three.
+// not have, even though GRID0+ always ranks three. Pro shows even in a
+// Discord-only fest: LAN games can be Pro.
 func TestResultsListOnlyTheFestsTeams(t *testing.T) {
 	f := testFest()
 	f.Teams = f.Teams[:2]
@@ -114,7 +115,7 @@ func TestResultsListOnlyTheFestsTeams(t *testing.T) {
 	for _, fl := range e.Fields {
 		text += fl.Name + fl.Value
 	}
-	if strings.Contains(text, "Charlie") || strings.Contains(text, "Pro") || !strings.Contains(text, "Snowmen") || !strings.Contains(text, "60.00%") {
+	if strings.Contains(text, "Charlie") || !strings.Contains(text, "Pro") || !strings.Contains(text, "Snowmen") || !strings.Contains(text, "60.00%") {
 		t.Errorf("results = %s", text)
 	}
 }
