@@ -345,12 +345,17 @@ func (b *Bot) festAnnounce(ctx context.Context, s *discordgo.Session, f Fest, ki
 		return
 	}
 	channel, voteRef := b.festAnnounceTarget(s, f)
-	claimed, err := b.api.ClaimFestPost(ctx, f.FestID, kind)
-	if err != nil || !claimed {
-		if err != nil {
-			b.log.Warn("claim fest post", "fest", f.FestID, "kind", kind, "error", err)
-		}
+	// Send first and claim after: a post that fails to send (say, the bot
+	// lacks Send Messages in a newly set announce channel) stays due and is
+	// tried again at the next wake, instead of being claimed and lost. A crash
+	// between the two can post twice; one bot instance makes that rare.
+	if _, done := f.Posted[kind]; done {
 		return
+	}
+	if kind == "results" {
+		// The roles go back after the results whether or not the post makes
+		// it, or a failed post would leave them on everyone for good.
+		defer b.removeTeamRoles(ctx, s, f)
 	}
 	msg := &discordgo.MessageSend{AllowedMentions: &discordgo.MessageAllowedMentions{}}
 	unix := func(t time.Time) string { return strconv.FormatInt(t.Unix(), 10) }
@@ -385,8 +390,8 @@ func (b *Bot) festAnnounce(ctx context.Context, s *discordgo.Session, f Fest, ki
 		return
 	}
 	b.log.Info("fest announcement", "fest", f.FestID, "kind", kind)
-	if kind == "results" {
-		b.removeTeamRoles(ctx, s, f)
+	if _, err := b.api.ClaimFestPost(ctx, f.FestID, kind); err != nil {
+		b.log.Warn("record fest post", "fest", f.FestID, "kind", kind, "error", err)
 	}
 }
 

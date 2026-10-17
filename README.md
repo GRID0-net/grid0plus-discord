@@ -126,7 +126,8 @@ account.
 5. For Splatfests: give the bot **Manage Roles** with its role **above every
    team role**, and **Add Reactions**, **Manage Messages** (to take back a
    second reaction), **Send Messages**, **Embed Links** and **Attach Files**
-   in the fest and review channels. Set `fest.*` (and `alerts.*`) in
+   in the fest and review channels (Send Messages and Embed Links in the
+   announce and alerts channels too). Set `fest.*` (and `alerts.*`) in
    `config.yaml`. Still no privileged intents.
 
 ## Updating
