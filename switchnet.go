@@ -206,6 +206,9 @@ type SaveImport struct {
 	GameVersion string `json:"gameVersion"`
 	Bytes       int    `json:"bytes"`
 	Backup      string `json:"backup"` // empty when there was no record to keep
+	// SetAside counts save fields GRID0+ could not name yet: left out of the
+	// record, kept with the save for the admin to add.
+	SetAside int `json:"setAside"`
 }
 
 // ImportSplatoon3Save replaces the Splatoon 3 cloud save of one of the
