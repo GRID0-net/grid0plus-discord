@@ -1,4 +1,4 @@
-module github.com/n-popescu/grid0plus-discord
+module github.com/GRID0-net/grid0plus-discord
 
 go 1.24.0
 
