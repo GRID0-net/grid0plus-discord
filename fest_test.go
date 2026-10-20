@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -195,5 +197,52 @@ func TestAnnouncementsReplyToTheVotePostUnlessTheyHaveTheirOwnChannel(t *testing
 	b.cfg.Fest.AnnounceChannelID = "100"
 	if ch, _ := b.festAnnounceTarget(nil, f); ch != "100" {
 		t.Fatalf("announce channel = vote channel: got %q", ch)
+	}
+}
+
+// Only one fest exists at a time, so no command asks which: each takes the
+// current one, and /fest submit also needs it to be open for play.
+func TestEveryFestCommandTakesTheCurrentFest(t *testing.T) {
+	b := &Bot{
+		log:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		api:  NewSwitchNet("http://127.0.0.1:1", "secret"), // unreachable: the cache is what is read
+		fest: newFestState(),
+	}
+	if _, problem := b.pickFest(t.Context(), false); problem == "" {
+		t.Error("no fest was reported as no fest")
+	}
+	now := time.Now()
+	b.fest.fests["LANF-00001"] = Fest{FestID: "LANF-00001", Title: "Frostyfest",
+		Timetable: FestTimetable{Start: now.Add(time.Hour), End: now.Add(49 * time.Hour)}}
+	if f, problem := b.pickFest(t.Context(), false); problem != "" || f.FestID != "LANF-00001" {
+		t.Errorf("current fest = %q, %q", f.FestID, problem)
+	}
+	if _, problem := b.pickFest(t.Context(), true); !strings.Contains(problem, "isn't open for play yet") {
+		t.Errorf("submit before play opens: %q", problem)
+	}
+	b.fest.fests["LANF-00001"] = Fest{FestID: "LANF-00001", Title: "Frostyfest",
+		Timetable: FestTimetable{Start: now.Add(-time.Hour), End: now.Add(47 * time.Hour)}}
+	if f, problem := b.pickFest(t.Context(), true); problem != "" || f.FestID != "LANF-00001" {
+		t.Errorf("submit during play: %q, %q", f.FestID, problem)
+	}
+	b.fest.fests["LANF-00001"] = Fest{FestID: "LANF-00001", Title: "Frostyfest",
+		Timetable: FestTimetable{Start: now.Add(-49 * time.Hour), End: now.Add(-time.Hour)}}
+	if _, problem := b.pickFest(t.Context(), true); !strings.Contains(problem, "has ended") {
+		t.Errorf("submit after play: %q", problem)
+	}
+	if f, problem := b.pickFest(t.Context(), false); problem != "" || f.FestID != "LANF-00001" {
+		t.Errorf("standings after play: %q, %q", f.FestID, problem)
+	}
+	for _, c := range func() []*discordgo.ApplicationCommand {
+		a, m := festCommands()
+		return []*discordgo.ApplicationCommand{a, m}
+	}() {
+		for _, sub := range c.Options {
+			for _, o := range sub.Options {
+				if o.Name == "fest" || o.Autocomplete {
+					t.Errorf("/%s %s still asks which fest", c.Name, sub.Name)
+				}
+			}
+		}
 	}
 }

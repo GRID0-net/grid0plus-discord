@@ -553,10 +553,6 @@ func (b *Bot) fcRemove(ctx context.Context, r reply, user *discordgo.User) {
 // only reaches the caller's accounts, so offering a stranger's login would be
 // offering something that cannot be used.
 func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if n := i.ApplicationCommandData().Name; n == "fest" || n == "fest-mod" {
-		b.festAutocomplete(s, i)
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	data := i.ApplicationCommandData()

@@ -20,10 +20,6 @@ func festTeamOptions(n int, required bool, note string) []*discordgo.Application
 	}
 }
 
-func festPicker(desc string) *discordgo.ApplicationCommandOption {
-	return &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionString, Name: "fest", Description: desc, Autocomplete: true}
-}
-
 // festCommand is /fest. Registered only when fest.mod_role_ids is set.
 // festCommands are /fest, for everyone, and /fest-mod, for mods: Discord
 // hides whole commands, never single subcommands.
@@ -58,17 +54,14 @@ func festCommands() (*discordgo.ApplicationCommand, *discordgo.ApplicationComman
 		}},
 		{Type: discordgo.ApplicationCommandOptionString, Name: "paint", Description: "Each player's paint, winners then losers, e.g. 1203 980 - 850 (- if unknown)"},
 		{Type: discordgo.ApplicationCommandOptionAttachment, Name: "screenshot", Description: "A picture of the results screen"},
-		festPicker("Which fest (default: the one being played)"),
 	}
 	help := &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "help", Description: "What these commands do"}
 	return &discordgo.ApplicationCommand{
 		Name: "fest", Description: "Splatfests: LAN games, your record, the standings",
 		Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "submit", Description: "Report a LAN game you played, for a mod to check", Options: submit},
-			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "me", Description: "Your team, games and contribution in a fest",
-				Options: []*discordgo.ApplicationCommandOption{festPicker("Which fest (default: the latest)")}},
-			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "standings", Description: "What the game shows about a fest right now",
-				Options: []*discordgo.ApplicationCommandOption{festPicker("Which fest (default: the latest)")}},
+			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "me", Description: "Your team, games and contribution in the current fest"},
+			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "standings", Description: "What the game shows about the current fest right now"},
 			help,
 		},
 	}, &discordgo.ApplicationCommand{
@@ -80,8 +73,7 @@ func festCommands() (*discordgo.ApplicationCommand, *discordgo.ApplicationComman
 		DefaultMemberPermissions: ptr(int64(discordgo.PermissionManageGuild)),
 		Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "create", Description: "Post a fest vote (asks for the text next)", Options: create},
-			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "cancel", Description: "Remove a fest's vote post (a LAN-only fest loses its votes and games)",
-				Options: []*discordgo.ApplicationCommandOption{{Type: discordgo.ApplicationCommandOptionString, Name: "fest", Description: "Which fest", Required: true, Autocomplete: true}}},
+			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "cancel", Description: "Remove the current fest's vote post (a LAN-only fest loses its votes and games)"},
 			help,
 		},
 	}
@@ -148,45 +140,39 @@ func (b *Bot) onFestCommand(s *discordgo.Session, i *discordgo.InteractionCreate
 	case "submit":
 		b.festSubmit(ctx, r, opts)
 	case "me":
-		b.festMe(ctx, r, opts)
+		b.festMe(ctx, r)
 	case "standings":
-		b.festStandings(ctx, r, opts)
+		b.festStandings(ctx, r)
 	case "cancel":
-		b.festCancelPrompt(ctx, r, opts)
+		b.festCancelPrompt(ctx, r)
 	case "help":
 		r.edit(&discordgo.WebhookEdit{Embeds: &[]*discordgo.MessageEmbed{b.helpEmbed(data.Name, i.Member)}})
 	}
 }
 
-// pickFest resolves the fest option, or the obvious default: the one being
-// played (for submit), or the latest.
-func (b *Bot) pickFest(ctx context.Context, opts map[string]*discordgo.ApplicationCommandInteractionDataOption, inPlay bool) (Fest, string) {
+// pickFest returns the current fest. GRID0+ lets only one fest post exist at a
+// time, so there is nothing to choose between: it is the one fest in the list.
+// For /fest submit (inPlay) it must also be open for play, or the answer says
+// when it is not. Should the list ever hold more than one, the newest wins.
+func (b *Bot) pickFest(ctx context.Context, inPlay bool) (Fest, string) {
 	if err := b.refreshFests(ctx); err != nil {
 		b.log.Warn("refresh fests", "error", err)
 	}
-	if id := optString(opts, "fest"); id != "" {
-		if f, ok := b.cachedFest(strings.ToUpper(id)); ok {
-			return f, ""
-		}
-		return Fest{}, "I don't know a fest called `" + id + "`."
-	}
 	fests := b.cachedFests()
-	now := time.Now()
-	var candidates []Fest
-	for _, f := range fests {
-		if !inPlay || (!now.Before(f.Timetable.Start) && now.Before(f.Timetable.End)) {
-			candidates = append(candidates, f)
+	if len(fests) == 0 {
+		return Fest{}, "There is no fest right now."
+	}
+	f := fests[len(fests)-1]
+	if inPlay {
+		now := time.Now()
+		switch {
+		case now.Before(f.Timetable.Start):
+			return Fest{}, "**" + f.Title + "** isn't open for play yet."
+		case f.over(now):
+			return Fest{}, "No fest is being played right now. **" + f.Title + "** has ended."
 		}
 	}
-	switch {
-	case len(candidates) == 0 && inPlay:
-		return Fest{}, "No fest is being played right now."
-	case len(candidates) == 0:
-		return Fest{}, "There are no fests yet."
-	case inPlay && len(candidates) > 1:
-		return Fest{}, "More than one fest is being played: pick one with the `fest` option."
-	}
-	return candidates[len(candidates)-1], ""
+	return f, ""
 }
 
 // ---- /fest create ---------------------------------------------------------------
@@ -357,12 +343,12 @@ func (b *Bot) festCreate(ctx context.Context, r reply, pendingID, description st
 
 // ---- /fest cancel -------------------------------------------------------------------
 
-func (b *Bot) festCancelPrompt(ctx context.Context, r reply, opts map[string]*discordgo.ApplicationCommandInteractionDataOption) {
+func (b *Bot) festCancelPrompt(ctx context.Context, r reply) {
 	if !b.isMod(r.i.Member) {
 		r.text("Only mods can cancel a fest.")
 		return
 	}
-	f, problem := b.pickFest(ctx, opts, false)
+	f, problem := b.pickFest(ctx, false)
 	if problem != "" {
 		r.text(problem)
 		return
@@ -412,8 +398,8 @@ func (b *Bot) festCancel(s *discordgo.Session, i *discordgo.InteractionCreate, f
 
 // ---- /fest me and /fest standings ---------------------------------------------------
 
-func (b *Bot) festMe(ctx context.Context, r reply, opts map[string]*discordgo.ApplicationCommandInteractionDataOption) {
-	f, problem := b.pickFest(ctx, opts, false)
+func (b *Bot) festMe(ctx context.Context, r reply) {
+	f, problem := b.pickFest(ctx, false)
 	if problem != "" {
 		r.text(problem)
 		return
@@ -460,8 +446,8 @@ func (b *Bot) festMe(ctx context.Context, r reply, opts map[string]*discordgo.Ap
 	r.edit(&discordgo.WebhookEdit{Embeds: &[]*discordgo.MessageEmbed{e}})
 }
 
-func (b *Bot) festStandings(ctx context.Context, r reply, opts map[string]*discordgo.ApplicationCommandInteractionDataOption) {
-	f, problem := b.pickFest(ctx, opts, false)
+func (b *Bot) festStandings(ctx context.Context, r reply) {
+	f, problem := b.pickFest(ctx, false)
 	if problem != "" {
 		r.text(problem)
 		return
@@ -488,7 +474,7 @@ func (b *Bot) festStandings(ctx context.Context, r reply, opts map[string]*disco
 const maxScreenshot = 10 << 20
 
 func (b *Bot) festSubmit(ctx context.Context, r reply, opts map[string]*discordgo.ApplicationCommandInteractionDataOption) {
-	f, problem := b.pickFest(ctx, opts, true)
+	f, problem := b.pickFest(ctx, true)
 	if problem != "" {
 		r.text(problem)
 		return
@@ -744,36 +730,4 @@ func (b *Bot) dm(s *discordgo.Session, userID, text string) {
 	if err != nil {
 		b.log.Info("could not DM", "user", userID, "error", err)
 	}
-}
-
-// ---- autocomplete -------------------------------------------------------------------
-
-func (b *Bot) festAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	sub, opts := subcommand(i.ApplicationCommandData())
-	typed := strings.ToLower(optString(opts, "fest"))
-	if len(b.cachedFests()) == 0 {
-		_ = b.refreshFests(ctx)
-	}
-	now := time.Now()
-	var choices []*discordgo.ApplicationCommandOptionChoice
-	fests := b.cachedFests()
-	for k := len(fests) - 1; k >= 0 && len(choices) < maxChoices; k-- {
-		f := fests[k]
-		if sub == "submit" && (now.Before(f.Timetable.Start) || f.over(now)) {
-			continue
-		}
-		name := f.Title + " (" + f.FestID + ")"
-		if r := []rune(name); len(r) > 100 {
-			name = string(r[:100])
-		}
-		if typed == "" || strings.Contains(strings.ToLower(name), typed) {
-			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{Name: name, Value: f.FestID})
-		}
-	}
-	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
-		Data: &discordgo.InteractionResponseData{Choices: choices},
-	})
 }

@@ -46,10 +46,10 @@ count in the same fests as GRID0+'s online players.
 | `/fest-mod create` | **Mods.** Posts a fest vote: a title, the announcement text (asked for in a form), and the three teams Alpha, Bravo and Charlie, each with a name, emoji and role. Tie it to an in-game fest with `game_fest:` (teams in the BCAT pack's order), or give `start:`/`end:` for a LAN-only fest. `channel:` overrides `fest.channel_id`. | the channel |
 | *reacting on the vote post* | Joins that team and gives its role. **The first pick is final**, as in game: a reaction for another team is taken back with a DM. Needs a GRID0+ account. Picking a team in Splatoon 3 gives the role too, the moment it happens. | |
 | `/fest submit` | Reports a LAN game you played: its `type` (Open, Pro, or Tricolor, which only opens in the second half with the halftime leader defending, so up to six losers), winners, losers, optionally each player's paint (winners first, `-` if unknown) and a screenshot. Every player needs an account and a team. The other players are pinged and can **Dispute** it. Mods get it in the review channel with Accept / Refuse; the submitter is DMed the result (and a refusal's reason). An accepted game counts exactly like an online win; missing paint is the fest's online average. | only you, plus a notice in the channel |
-| `/fest me` | Your team, games, wins, contribution and submissions in a fest. Never team totals. | only you |
+| `/fest me` | Your team, games, wins, contribution and submissions in the current fest. Never team totals. | only you |
 | `/fest standings` | What the game would show right now: nothing during the first half, the halftime ranking from the second half (places only, no percentages, as in game), the results once out. | only you |
 | `/fest help`, `/fest-mod help` | What each command does. | only you |
-| `/fest-mod cancel` | **Mods.** Removes a vote post. A LAN-only fest is deleted with its votes and games. | only you |
+| `/fest-mod cancel` | **Mods.** Removes the current fest's vote post. A LAN-only fest is deleted with its votes and games. | only you |
 
 The bot posts on its own, pinging the three team roles, when play opens, the halftime report, when play
 ends, and the results (no Conch Shells: GRID0+ scores none, since GRID0 LAN

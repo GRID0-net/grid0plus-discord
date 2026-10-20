@@ -48,13 +48,13 @@ var helpCategories = []helpCategory{
 	{key: "fest", title: "Splatfests", fest: true, entries: []helpEntry{
 		{"Vote post", "React with your team's emoji to join it. Your first pick is final, here and in game."},
 		{"/fest submit", "Report a LAN game you played (Open, Pro, or Tricolor in the second half). A mod checks it before it counts."},
-		{"/fest me", "Your team, games and contribution in a fest."},
-		{"/fest standings", "What the game shows about a fest right now."},
+		{"/fest me", "Your team, games and contribution in the current fest."},
+		{"/fest standings", "What the game shows about the current fest right now."},
 		{"/fest help", "This list."},
 	}},
 	{key: "fest-mod", title: "Splatfests, for mods", mods: true, fest: true, entries: []helpEntry{
 		{"/fest-mod create", "Post a fest vote: a title, the text (in a form), the three teams. Only one fest at a time."},
-		{"/fest-mod cancel", "Remove a fest's vote post. A LAN-only fest loses its votes and games."},
+		{"/fest-mod cancel", "Remove the current fest's vote post. A LAN-only fest loses its votes and games."},
 		{"Review queue", "Accept or Refuse each LAN game in the review channel. Accepted games count like online ones."},
 		{"/fest-mod help", "This list."},
 	}},
