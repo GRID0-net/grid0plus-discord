@@ -2,3 +2,6 @@
 /switchnet-discord
 *.env
 /grid0plus-discord
+
+/data/tournaments.json
+/data/.tournament-*

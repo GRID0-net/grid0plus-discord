@@ -186,3 +186,12 @@ SELF/private presences remain excluded, as in `/online`. It polls the protected
 one loop handles reconnects, and unchanged counts cause no Discord update.
 An API outage displays status unavailable instead of retaining a stale number.
 This counts accounts, not physical consoles or distinct Discord owners.
+
+## Tournaments
+
+The optional tournament manager provides account-checked slash registration,
+accepted teammate invitations, 1v1/2v2 single-elimination brackets, organizer-covered
+timezone scheduling and best-of-three result reporting. It persists state across
+restarts and exposes failed notifications instead of silently losing invitations.
+Enable it with `tournaments.store_file`; see [the tournament guide](docs/TOURNAMENTS.md)
+for configuration, command examples, scheduling rules and recovery procedures.

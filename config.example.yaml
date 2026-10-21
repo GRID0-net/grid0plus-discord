@@ -51,3 +51,10 @@ alerts:
   # Reads in a row a service must fail before it is reported: a deploy
   # restarts every service for a few seconds.
   down_after: 3
+
+# See docs/TOURNAMENTS.md. Empty store_file disables both tournament commands.
+tournaments:
+  store_file: ""
+  # Example: /var/lib/grid0plus-discord/tournaments.json (writable by the bot).
+  # Administrators always qualify; additional trusted organizer roles may be listed.
+  admin_role_ids: []

@@ -31,7 +31,8 @@ type Bot struct {
 	pendingSaves map[string]pendingSave
 
 	// fest is the Splatfest cache; see fest.go.
-	fest *festState
+	fest        *festState
+	tournaments *tournamentStore
 }
 
 const mintCooldown = 30 * time.Second
@@ -138,6 +139,9 @@ func (r reply) edit(e *discordgo.WebhookEdit) {
 func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	name := i.ApplicationCommandData().Name
 	switch name {
+	case "tournament", "tournament-admin":
+		b.onTournamentCommand(s, i)
+		return
 	case "fest", "fest-mod":
 		b.onFestCommand(s, i)
 		return
