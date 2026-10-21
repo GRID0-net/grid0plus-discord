@@ -25,8 +25,9 @@ StateDirectory=grid0plus-discord
 StateDirectoryMode=0700
 ```
 
-Then reload systemd and restart the bot. No additional Discord intents are
-required. It needs View Channel and Send Messages in the announcement channel;
+Then reload systemd and restart the bot. Explicit organizer user lists need no
+additional privileged intents; role lookup needs the Developer Portal setting
+described below. It needs View Channel and Send Messages in the announcement channel;
 participants should allow DMs from server members. Existing GRID0+ API settings
 verify entries through `/bot/v1/me`. API failures refuse entry/format changes;
 there is no account fallback or automatic registration.
@@ -37,6 +38,7 @@ To let a configured organizer role see the admin command, grant that role access
 under Server Settings → Integrations → this bot → `/tournament-admin`.
 Discord command permissions alone do not bypass the bot's role check. Every
 organizer named at creation must be a human guild member with this access.
+You can name up to 32 organizers, using explicit users or one trusted role.
 
 ## Create and register
 
@@ -152,7 +154,7 @@ availability. A round window cannot be moved across an existing booking;
 release that booking first. Round windows can be extended after format selection.
 Rescheduling checks the same availability and conflict rules as auto-scheduling.
 To change an organizer's availability after format selection, unschedule their
-booked matches first; the original organizer roster remains fixed.
+booked matches first; the organizer roster can also be changed with `modify organizers`, as described below.
 
 ## Play, report and correct
 
@@ -222,3 +224,115 @@ redeploys do not invalidate this independent bot state.
 
 Tests use temporary stores, a local fake GRID0+ API and an intercepted Discord
 HTTP transport. They send no messages to real members or channels.
+
+## Edit an existing tournament
+
+`/tournament-admin modify` collects the controls in one group. Original top-level
+commands remain shortcuts, so existing instructions keep working. All grouped
+controls use exactly the same administrator, assigned-organizer and GRID0+
+eligibility checks as their shortcuts.
+
+### Select organizers from users or a role
+
+At creation, choose **one** of:
+
+```text
+organizers: @Nico @OtherOrganizer
+organizer_role: @TournamentOrganizers
+```
+
+The string `organizers: @TournamentOrganizers` also accepts a single role mention.
+A role must have Administrator or be explicitly allowlisted in
+`tournaments.admin_role_ids`; choosing it does not grant an ordinary role access
+to tournament controls. The same Discord Integration command-access configuration
+still applies to allowlisted roles.
+
+Role lookup requires **Server Members Intent enabled in the Developer Portal**
+(Bot → Privileged Gateway Intents). The bot does not subscribe to member events
+or maintain a privileged gateway member cache. This REST requirement is documented
+by [Discord](https://github.com/discord/discord-api-docs/blob/main/developers/resources/guild.mdx).
+Failure to list all members refuses the operation; it never silently saves a
+partial roster. Explicit user lists do not require this intent.
+
+Role members are resolved across all pages, bots are excluded, and the resulting
+human roster is saved (maximum 32). For a role, the creator has first scheduling
+priority if included; remaining members have deterministic ID order. Explicit
+user lists retain the supplied priority order. Membership is a **snapshot**:
+later Discord role edits cannot silently remove an assigned organizer.
+
+Replace or refresh the roster with:
+
+```text
+/tournament-admin modify organizers tournament: ID organizers: @Nico @OtherOrganizer
+/tournament-admin modify organizers tournament: ID organizer_role: @TournamentOrganizers
+```
+
+The operation preserves existing organizers' availability. New organizers default
+to noon–midnight in the tournament timezone; use `modify organizer` to customize
+their hours. A booked/playing organizer cannot be removed until their matches are
+rescheduled to a retained organizer or unscheduled. Keep at least one organizer.
+
+### Details, registration and dates
+
+```text
+/tournament-admin modify view tournament: ID
+/tournament-admin modify settings tournament: ID title: New title prizes: Updated prize
+/tournament-admin modify settings tournament: ID date: 2026-11-13 registration_closes: 2026-11-12 20:00
+/tournament-admin modify settings tournament: ID rounds: 2026-11-13 18:00/22:00;2026-11-14 18:00/22:00
+/tournament-admin modify settings tournament: ID timezone: Europe/Brussels slot_minutes: 60 channel: #new-channel
+/tournament-admin modify registration tournament: ID action: close
+/tournament-admin modify registration tournament: ID action: open
+```
+
+Only supplied settings change. `date` moves all round windows by calendar days,
+keeping their local clock times; `rounds` replaces the full list instead. They
+cannot be supplied together. Changing the timezone changes how future inputs are
+interpreted; it does not move existing instants or overwrite individual player
+and organizer timezones.
+
+Edits are transactional: a failed validation rolls back **all** supplied fields.
+Bookings must remain inside their round windows, and bracket rounds cannot be
+removed. Release bookings before shifting them outside their windows or changing
+series duration. Once a series has been played, use `modify window` to extend a
+future unplayed round rather than rewriting the entire calendar. A completed or
+cancelled event is immutable. Changes are audited, posted to the channel, and
+notified to entrants. Changing the channel also posts a move notice in the old
+channel and redirects queued notifications to the new one.
+
+Registration can reopen only before format selection, with a future deadline.
+Set a new deadline first if the previous one expired. Reopening retains current
+entries but cannot restore expired invitations or alter an already locked bracket.
+Closing through `modify registration action:close` rechecks GRID0+ eligibility,
+just like `modify close`.
+
+### Matches and recovery
+
+All of these are available under `/tournament-admin modify`:
+
+| Control | Purpose |
+| --- | --- |
+| `close`, `format` | Close entry and choose 1v1/2v2 |
+| `window` | Add/adjust a round window without displacing bookings |
+| `organizer` | Edit one organizer's timezone/availability |
+| `schedule`, `reschedule`, `unschedule` | Manage match bookings |
+| `delay` | Move a booked series later using its match ID |
+| `start`, `report` | Assigned organizer starts a series and records games |
+| `undo` | Correct an unused result with an audit reason |
+| `withdraw`, `cancel` | Forfeit an entrant/team or cancel the event |
+| `retry-notifications`, `audit` | Recover delivery failures and inspect actions |
+
+For a delay you only need the match ID; its tournament is inferred safely within
+the command's server:
+
+```text
+/tournament-admin modify delay match: ID-M1 minutes: 15 reason: Connection issue
+```
+
+`/tournament-admin delay` is an equivalent shortcut. The bot moves the existing
+booking forward by the specified minutes (1–10080); for an overdue booking it
+counts from the current time. It preserves the organizer and opponents, suppresses
+pending notices with the old time, and sends the new time/reason to the channel,
+players and organizer. It refuses conflicts or times outside the round window:
+extend that window or release/reschedule the conflicting match first. It does not
+cascade changes to other matches. Only scheduled, unstarted series can be delayed;
+it does **not** pause a match already running on the consoles.

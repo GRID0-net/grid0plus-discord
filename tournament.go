@@ -51,6 +51,7 @@ type tournamentNotice struct {
 type tournament struct {
 	ID, Guild, Channel, Title, Prize, Zone, State, Champion string
 	CreatedBy                                               string
+	OrganizerRole                                           string
 	Deadline                                                time.Time
 	Windows                                                 []tournamentWindow
 	SlotMinutes                                             int
