@@ -33,9 +33,9 @@ func tournamentCommands() []*discordgo.ApplicationCommand {
 		sub("match", "Show one match, its players and its next game ID", id(), str("match", "Match ID from the schedule", true)),
 	}}
 	admin := &discordgo.ApplicationCommand{Name: "tournament-admin", Description: "Admins: manage tournaments and best-of-three matches", DefaultMemberPermissions: ptr(int64(discordgo.PermissionAdministrator)), Options: []*discordgo.ApplicationCommandOption{
-		sub("create", "Open registration and announce a tournament", str("title", "Tournament title (max 100 characters)", true), str("date", "First tournament date: YYYY-MM-DD in the organizer timezone", true), str("registration_closes", "YYYY-MM-DD HH:MM in organizer timezone, or RFC3339", true), str("organizers", "User mentions/IDs in priority order (or a role mention)", false), str("rounds", "Round windows: YYYY-MM-DD HH:MM/HH:MM; ... (one per elimination round)", true), str("prizes", "Winner/prize description", true), &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionChannel, Name: "channel", Description: "Announcement channel (default this channel)", ChannelTypes: []discordgo.ChannelType{discordgo.ChannelTypeGuildText, discordgo.ChannelTypeGuildNews}}, str("timezone", "Organizer IANA timezone (default Europe/Brussels)", false), integer("slot_minutes", "Reserved minutes per best-of-three match (default 45, 15..180)", false)),
+		sub("create", "Open registration and announce a tournament", str("title", "Tournament title (max 100 characters)", true), str("date", "First tournament date: YYYY-MM-DD in the organizer timezone", true), str("registration_closes", "YYYY-MM-DD HH:MM in organizer timezone, or RFC3339", true), str("organizers", "User mentions/IDs in priority order (or a role mention)", false), str("rounds", "Optional round windows; otherwise plan them after registration closes", false), str("prizes", "Winner/prize description", true), &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionChannel, Name: "channel", Description: "Announcement channel (default this channel)", ChannelTypes: []discordgo.ChannelType{discordgo.ChannelTypeGuildText, discordgo.ChannelTypeGuildNews}}, str("timezone", "Organizer IANA timezone (default Europe/Brussels)", false), integer("slot_minutes", "Reserved minutes per best-of-three match (default 45, 15..180)", false)),
 		sub("close", "Close entry, recheck GRID0+ eligibility, and recommend formats", id()),
-		sub("format", "Lock teams/bracket and schedule matches; 1 or 2 players per side", id(), integer("players_per_team", "1 for 1v1, 2 for 2v2; locked after choosing", true)),
+		sub("format", "Lock teams/bracket and schedule matches; 1 or 2 players per side", id(), integer("players_per_team", "1 for 1v1, 2 for 2v2; confirm rebuild to replace an unstarted bracket", true), str("rounds", "Optional windows for the bracket: YYYY-MM-DD HH:MM/HH:MM; ...", false), &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionBoolean, Name: "rebuild", Description: "Explicitly replace an unstarted bracket and withdraw its old bookings"}),
 		sub("window", "Add or extend a round window without displacing booked matches", id(), integer("round", "Round number, starting at 1", true), str("window", "YYYY-MM-DD HH:MM/HH:MM in organizer timezone", true)),
 		sub("organizer", "Set an organizer's actual timezone and available hours", id(), &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionUser, Name: "user", Description: "An organizer named at creation", Required: true}, str("timezone", "IANA timezone", true), integer("from_hour", "First available local hour", true), integer("until_hour", "End local hour, exclusive", true)),
 		sub("schedule", "Schedule all ready matches using current availability", id()),
@@ -238,7 +238,8 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 				return fmt.Errorf("active tournament limit reached; finish or cancel an event first")
 			}
 			d.Tournaments[t.ID] = t
-			tournamentAddNotice(d, t, "", fmt.Sprintf("**%s** — `%s`\nRegistration closes <t:%d:F>. First round <t:%d:F>.\nEnter with `/tournament participate tournament:%s` (optional `team` invitation). GRID0+ account required. Accepted pairs stay together in 2v2; 1v1 splits them into individual entrants.\nPrizes: %s\nTimezone: %s. Format selected after registration closes.", t.Title, t.ID, t.Deadline.Unix(), t.Windows[0].Start.Unix(), t.ID, t.Prize, t.Zone))
+			tournamentAddNotice(d, t, "", tournamentAnnouncement(t))
+			d.Notices[len(d.Notices)-1].Announcement = true
 			tournamentAudit(t, actor, "created", now)
 			return nil
 		})
@@ -427,12 +428,31 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 			answer = tournamentFormats(t)
 			tournamentAddNotice(d, t, "", "Registration closed for **"+t.Title+"**. "+answer+" An admin will select the format.")
 		case "format":
+			if o := opts["rounds"]; o != nil {
+				windows, e := tournamentParseWindows(o.StringValue(), t.Zone)
+				if e != nil {
+					return e
+				}
+				t.Windows = windows
+				t.Date = tournamentDate(t)
+			}
 			for uid, p := range t.People {
 				if eligible[uid] != p.Account {
 					return fmt.Errorf("account eligibility changed; retry")
 				}
 			}
+			if t.State == "ready" {
+				if opts["rebuild"] == nil || !opts["rebuild"].BoolValue() {
+					return fmt.Errorf("format is locked; use rebuild:true to replace an entirely unstarted bracket")
+				}
+				if e = tournamentPrepareRebuild(d, t, actor, now); e != nil {
+					return e
+				}
+			}
 			if e = tournamentConfigure(t, tournamentInt(opts, "players_per_team", 0), now); e != nil {
+				return e
+			}
+			if e = tournamentValidateWindows(t); e != nil {
 				return e
 			}
 			tournamentAddNotice(d, t, "", tournamentTeamText(t))
@@ -458,6 +478,7 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 			if e = tournamentValidateWindows(t); e != nil {
 				return e
 			}
+			tournamentSchedule(d, t, now)
 		case "organizer":
 			if t.State != "registration" && t.State != "closed" && t.State != "ready" {
 				return fmt.Errorf("event is finished")
@@ -507,6 +528,9 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 			at, e := tournamentParseTime(tournamentValue(opts, "start"), t.Zone)
 			if e != nil {
 				return e
+			}
+			if m.Round > len(t.Windows) {
+				return fmt.Errorf("set this round window with modify window first")
 			}
 			w := t.Windows[m.Round-1]
 			if at.Before(now) || at.Before(w.Start) || at.Add(time.Duration(t.SlotMinutes)*time.Minute).After(w.End) {
@@ -640,6 +664,8 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 				tournamentAddNotice(d, t, uid, text)
 			}
 		case "retry-notifications":
+			t.AnnouncementError = ""
+			t.AnnouncementRetryAt = time.Time{}
 			for j := range d.Notices {
 				n := &d.Notices[j]
 				if n.Tournament == t.ID && !n.Sent {
@@ -677,21 +703,33 @@ func (b *Bot) tournamentCreate(ctx context.Context, s *discordgo.Session, i *dis
 	if _, e := time.LoadLocation(zone); e != nil {
 		return nil, fmt.Errorf("invalid IANA organizer timezone")
 	}
-	windows, e := tournamentParseWindows(tournamentValue(opts, "rounds"), zone)
-	if e != nil {
-		return nil, e
-	}
+	var windows []tournamentWindow
 	date := tournamentValue(opts, "date")
-	if _, e = time.Parse("2006-01-02", date); e != nil || windows[0].Start.In(mustTournamentZone(zone)).Format("2006-01-02") != date {
-		return nil, fmt.Errorf("date must match the first round window's YYYY-MM-DD")
+	day, e := time.ParseInLocation("2006-01-02", date, mustTournamentZone(zone))
+	if e != nil {
+		return nil, fmt.Errorf("date must be YYYY-MM-DD")
+	}
+	if raw := tournamentValue(opts, "rounds"); raw != "" {
+		windows, e = tournamentParseWindows(raw, zone)
+		if e != nil {
+			return nil, e
+		}
+		if windows[0].Start.In(mustTournamentZone(zone)).Format("2006-01-02") != date {
+			return nil, fmt.Errorf("date must match the first round window")
+		}
 	}
 	deadline, e := tournamentParseTime(tournamentValue(opts, "registration_closes"), zone)
 	if e != nil {
 		return nil, e
 	}
-	if !deadline.After(now) || !deadline.Before(windows[0].Start) {
-		return nil, fmt.Errorf("registration must close in the future, before the first round")
+	limit := day.AddDate(0, 0, 1)
+	if len(windows) > 0 {
+		limit = windows[0].Start
 	}
+	if !deadline.After(now) || !deadline.Before(limit) {
+		return nil, fmt.Errorf("registration must close in the future, before the first round (or the end of the planned date when times are undecided)")
+	}
+
 	slot := tournamentInt(opts, "slot_minutes", 45)
 	if slot < 15 || slot > 180 {
 		return nil, fmt.Errorf("slot_minutes must be between 15 and 180")
@@ -717,11 +755,23 @@ func (b *Bot) tournamentCreate(ctx context.Context, s *discordgo.Session, i *dis
 	if e != nil || ch.GuildID != i.GuildID || (ch.Type != discordgo.ChannelTypeGuildText && ch.Type != discordgo.ChannelTypeGuildNews) {
 		return nil, fmt.Errorf("announcement channel must be a text channel in this server")
 	}
-	t := &tournament{ID: tournamentID(), Guild: i.GuildID, Channel: channel, Title: title, Prize: prize, Zone: zone, State: "registration", CreatedBy: i.Member.User.ID, OrganizerRole: role, Deadline: deadline, Windows: windows, SlotMinutes: slot, Organizers: orgs, People: map[string]tournamentPerson{}, Invites: map[string]string{}}
+	t := &tournament{ID: tournamentID(), Guild: i.GuildID, Channel: channel, Title: title, Prize: prize, Zone: zone, State: "registration", CreatedBy: i.Member.User.ID, OrganizerRole: role, Date: date, Deadline: deadline, Windows: windows, SlotMinutes: slot, Organizers: orgs, People: map[string]tournamentPerson{}, Invites: map[string]string{}}
 	return t, tournamentValidateWindows(t)
 }
 func tournamentValidateWindows(t *tournament) error {
-	if len(t.Windows) == 0 || !t.Deadline.Before(t.Windows[0].Start) {
+	if len(t.Windows) == 0 {
+		day, e := time.ParseInLocation("2006-01-02", t.Date, mustTournamentZone(t.Zone))
+		if e != nil || !t.Deadline.Before(day.AddDate(0, 0, 1)) {
+			return fmt.Errorf("set a valid planned date after the registration deadline")
+		}
+		for _, m := range t.Matches {
+			if m.State == "scheduled" || m.State == "playing" {
+				return fmt.Errorf("booked matches require round windows")
+			}
+		}
+		return nil
+	}
+	if !t.Deadline.Before(t.Windows[0].Start) {
 		return fmt.Errorf("registration must close before the first round")
 	}
 	for _, m := range t.Matches {
@@ -791,7 +841,7 @@ func tournamentMatchText(t *tournament, m tournamentMatch) string {
 }
 func tournamentSummary(t *tournament, d *tournamentData) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "**%s** `%s` — %s, %d entrants\n", t.Title, t.ID, t.State, len(t.People))
+	fmt.Fprintf(&out, "**%s** `%s` — %s, %d entrants\nPrizes: %s\n", t.Title, t.ID, t.State, len(t.People), t.Prize)
 	if t.State == "registration" || t.State == "closed" {
 		out.WriteString(tournamentFormats(t) + "\n")
 	}
@@ -800,6 +850,12 @@ func tournamentSummary(t *tournament, d *tournamentData) string {
 		if n.Tournament == t.ID && !n.Sent && n.Error == "" {
 			pending++
 		}
+	}
+	if rounds := tournamentRoundCount(t); rounds > len(t.Windows) {
+		fmt.Fprintf(&out, "Bracket needs %d round windows; %d set. Set times with modify window or modify settings rounds, then schedule.\n", rounds, len(t.Windows))
+	}
+	if t.AnnouncementError != "" {
+		out.WriteString("Announcement update failed; automatic retry is pending.\n")
 	}
 	fmt.Fprintf(&out, "Queued notifications: %d. Use /tournament match for an individual match.\n", pending)
 	if len(t.Teams) > 0 {
@@ -946,6 +1002,15 @@ func (b *Bot) deliverTournamentNotices(ctx context.Context, s *discordgo.Session
 			continue
 		}
 		var err error
+		var announcement *discordgo.Message
+		if n.Announcement {
+			b.tournaments.mu.Lock()
+			if t := b.tournaments.data.Tournaments[n.Tournament]; t != nil {
+				n.Text = tournamentAnnouncement(t)
+				n.Channel = t.Channel
+			}
+			b.tournaments.mu.Unlock()
+		}
 		channel := n.Channel
 		if n.User != "" {
 			var dm *discordgo.Channel
@@ -956,7 +1021,11 @@ func (b *Bot) deliverTournamentNotices(ctx context.Context, s *discordgo.Session
 		}
 		if err == nil {
 			for _, part := range tournamentMessageParts(n.Text) {
-				_, err = s.ChannelMessageSendComplex(channel, &discordgo.MessageSend{Content: part, AllowedMentions: &discordgo.MessageAllowedMentions{}}, discordgo.WithContext(ctx))
+				var sent *discordgo.Message
+				sent, err = s.ChannelMessageSendComplex(channel, &discordgo.MessageSend{Content: part, AllowedMentions: &discordgo.MessageAllowedMentions{}}, discordgo.WithContext(ctx))
+				if n.Announcement && err == nil {
+					announcement = sent
+				}
 				if err != nil {
 					break
 				}
@@ -972,6 +1041,14 @@ func (b *Bot) deliverTournamentNotices(ctx context.Context, s *discordgo.Session
 					if err == nil {
 						d.Notices[j].Sent = true
 						d.Notices[j].Error = ""
+						if announcement != nil {
+							if t := d.Tournaments[n.Tournament]; t != nil {
+								t.AnnouncementID = announcement.ID
+								t.AnnouncementChannel = n.Channel
+								t.AnnouncementText = n.Text
+								t.AnnouncementError = ""
+							}
+						}
 					} else {
 						d.Notices[j].Error = "Discord delivery failed; use /tournament status and ask an admin to retry"
 					}
@@ -986,6 +1063,7 @@ func (b *Bot) deliverTournamentNotices(ctx context.Context, s *discordgo.Session
 			b.log.Warn("tournament notification failed", "notice", n.ID, "error", err)
 		}
 	}
+	b.syncTournamentAnnouncements(ctx, s, now)
 }
 
 func tournamentMessageParts(text string) []string {

@@ -217,7 +217,11 @@ func tournamentEditSettings(d *tournamentData, t *tournament, opts map[string]*d
 			return fmt.Errorf("date must be YYYY-MM-DD")
 		}
 		loc := mustTournamentZone(t.Zone)
-		start := t.Windows[0].Start.In(loc)
+		start, e := time.ParseInLocation("2006-01-02", tournamentDate(t), loc)
+		if e != nil {
+			return e
+		}
+		t.Date = o.StringValue()
 		base := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
 		days := int(date.Sub(base) / (24 * time.Hour))
 		for j, w := range t.Windows {
@@ -257,7 +261,7 @@ func tournamentEditSettings(d *tournamentData, t *tournament, opts map[string]*d
 		t.SlotMinutes = slot
 	}
 	for _, m := range t.Matches {
-		if m.Round > len(t.Windows) {
+		if opts["rounds"] != nil && m.Round > len(t.Windows) {
 			return fmt.Errorf("round windows cannot remove a bracket round")
 		}
 		if (opts["date"] != nil || opts["rounds"] != nil) && (m.State == "complete" || m.State == "forfeit") {
@@ -281,14 +285,16 @@ func tournamentEditSettings(d *tournamentData, t *tournament, opts map[string]*d
 		}
 	}
 	tournamentAudit(t, actor, "modify settings: "+strings.Join(changed, ", "), now)
-	tournamentAddNotice(d, t, "", fmt.Sprintf("**%s** (`%s`) updated: %s. Registration closes <t:%d:F>; first round <t:%d:F>. Prizes: %s", t.Title, t.ID, strings.Join(changed, ", "), t.Deadline.Unix(), t.Windows[0].Start.Unix(), t.Prize))
+	tournamentAddNotice(d, t, "", fmt.Sprintf("**%s** (`%s`) updated: %s. Registration closes <t:%d:F>. %s Prizes: %s", t.Title, t.ID, strings.Join(changed, ", "), t.Deadline.Unix(), tournamentPlanningText(t), t.Prize))
 	for uid := range t.People {
 		tournamentAddNotice(d, t, uid, fmt.Sprintf("Tournament **%s** (`%s`) updated: %s. Check the tournament channel and /tournament status for the current details. Existing match times change only through explicit rescheduling.", t.Title, t.ID, strings.Join(changed, ", ")))
 	}
+	tournamentSchedule(d, t, now)
 	return nil
 }
 func tournamentSettingsText(t *tournament) string {
 	text := fmt.Sprintf("**%s** `%s` — %s\nPrizes: %s\nInput timezone: %s; %d minutes per series\nRegistration closes <t:%d:F>; channel <#%s>\n", t.Title, t.ID, t.State, t.Prize, t.Zone, t.SlotMinutes, t.Deadline.Unix(), t.Channel)
+	text += tournamentPlanningText(t) + "\n"
 	if t.OrganizerRole != "" {
 		text += "Organizer role snapshot: <@&" + t.OrganizerRole + "> (refresh via modify organizers)\n"
 	}
@@ -352,5 +358,45 @@ func tournamentDelay(d *tournamentData, t *tournament, id string, minutes int, r
 		}
 	}
 	tournamentAudit(t, actor, fmt.Sprintf("delay %s from %s to %s: %s", m.ID, old.Format(time.RFC3339), at.Format(time.RFC3339), reason), now)
+	return nil
+}
+
+// Explicit rebuilding is safe only before any actual match starts/results exist.
+func tournamentPrepareRebuild(d *tournamentData, t *tournament, actor string, now time.Time) error {
+	if t.State != "ready" {
+		return fmt.Errorf("only an active unstarted bracket can be rebuilt")
+	}
+	for _, m := range t.Matches {
+		if m.State == "playing" || len(m.Games) > 0 || m.State == "forfeit" || m.State == "complete" {
+			return fmt.Errorf("cannot rebuild after a match has started or a result/forfeit has been recorded")
+		}
+	}
+	oldTeams := tournamentTeamText(t)
+	for j := range d.Notices {
+		n := &d.Notices[j]
+		if n.Tournament == t.ID && !n.Sent && n.Text == oldTeams {
+			n.Sent = true
+			n.Error = "superseded by bracket rebuild"
+		}
+	}
+	recipients := map[string]bool{}
+	for _, m := range t.Matches {
+		tournamentInvalidateNotices(d, t, m.ID)
+		if !m.At.IsZero() {
+			recipients[m.Organizer] = true
+			for _, uid := range append(append([]string{}, tournamentPlayers(t, m.A)...), tournamentPlayers(t, m.B)...) {
+				recipients[uid] = true
+			}
+		}
+	}
+	text := "Bracket for **" + t.Title + "** is being rebuilt. All previous match IDs and bookings are withdrawn; use the newly published teams and match IDs."
+	tournamentAddNotice(d, t, "", text)
+	for uid := range recipients {
+		if uid != "" {
+			tournamentAddNotice(d, t, uid, text)
+		}
+	}
+	tournamentAudit(t, actor, "explicit bracket rebuild; withdrew old bookings", now)
+	t.State = "closed"
 	return nil
 }
