@@ -62,9 +62,15 @@ the tournament timezone, default Europe/Brussels. RFC3339 values with an explici
 offset also work, especially around daylight-saving changes. Round windows are
 ordered, non-overlapping and at most 12 hours long. An end written only as HH:MM
 uses the start's date; use a full end date/time for a window crossing midnight.
-Registration must close before round one. Each best-of-three reserves 45 minutes
-by default (configurable 15–180). Prepare enough round windows: 4 teams need 2,
-8 teams need 3, 16 need 4. `/tournament-admin window` can add/replace a window.
+`rounds` is optional at creation: the date can be announced before the number of
+entrants is known. With no windows, registration must close before the end of that
+planned date; actual round times, once supplied, must follow the deadline. No
+match time is invented. Each best-of-three reserves 45 minutes
+by default (configurable 15–180). After closing registration and choosing 1v1 or 2v2, the bot derives the number of
+rounds: 4 teams need 2, 8 teams need 3, 16 need 4. You can supply optional `rounds`
+on `modify format`, replace the complete calendar via `modify settings rounds`,
+or add windows gradually with `modify window`. Known opponents are scheduled as
+each applicable round window becomes available; the rest remain visibly waiting.
 
 Everyone enters with their own linked GRID0+ account:
 
@@ -101,6 +107,7 @@ An admin can close earlier:
 ```text
 /tournament-admin close tournament: ID
 /tournament-admin format tournament: ID players_per_team: 2
+# Optionally also provide rounds: YYYY-MM-DD HH:MM/HH:MM; ...
 ```
 
 Close recommends available formats. Format selection rechecks every entrant's
@@ -109,7 +116,9 @@ number of at least four allow 2v2. In 2v2, accepted partners stay together and
 remaining solos are randomly paired. In 1v1, both partners become independent
 entries. Teams and bracket positions are randomly seeded once, then published
 with stable `T1`, `T2`, etc. IDs. Byes advance automatically when needed. Format
-cannot change after the bracket is built. 3v3/4v4 and groups/double elimination
+can change before any actual match starts, using explicit `rebuild:true`; old
+bookings are withdrawn and fresh match IDs are issued. Started/played brackets
+cannot be rebuilt. 3v3/4v4 and groups/double elimination
 are not implemented yet.
 
 Players can set their timezone and daily availability:
@@ -336,3 +345,43 @@ players and organizer. It refuses conflicts or times outside the round window:
 extend that window or release/reschedule the conflicting match first. It does not
 cascade changes to other matches. Only scheduled, unstarted series can be delayed;
 it does **not** pause a match already running on the consoles.
+
+## Live registration counter
+
+The original creation announcement shows **Participants: N** and the current
+registration/event state. A direct entry counts immediately; an invitation counts
+its recipient only after acceptance unless that recipient had already registered.
+Withdrawals before the bracket locks reduce the count. After locking, the number
+records original entrants, including eliminated/forfeited teams. The existing message is edited, not reposted, with
+changes coalesced into the bot's five-second delivery cycle. The Discord message
+ID, channel and last rendered content persist across restarts; unchanged counts
+cause no extra edit or state write. No extra Discord intent is needed.
+
+Metadata and state changes refresh that same announcement too. After moving the
+announcement channel, a replacement announcement in the new channel becomes the
+tracked message. A deleted tracked announcement is recreated automatically. Other failed edits
+are visible through `/tournament status`, back off
+for a minute, and retry; `modify retry-notifications` can reset the backoff.
+Long prize descriptions are shortened in the announcement so the counter stays
+in one editable message; `/tournament status` includes the full prize text.
+
+### Every creation option remains editable
+
+All creation fields have a corresponding control: `modify settings` edits title,
+prizes, date, timezone, registration deadline, rounds, match duration and channel;
+`modify organizers` replaces user lists or role snapshots; `modify organizer`
+adjusts individual organizer availability. Booking/result checks still apply.
+
+To change an already chosen format before **any** actual match starts:
+
+```text
+/tournament-admin modify format tournament: ID players_per_team: 1 rebuild: true
+```
+
+Optional `rounds` can be supplied in the same command. The operation rechecks
+GRID0+ eligibility, keeps accepted partnership records for a future 2v2 format,
+withdraws old bookings, republishes teams, and notifies affected players and
+organizers. New match IDs are never reused from the old bracket, so stale result
+commands cannot accidentally target different opponents. Automatic byes alone
+do not prevent rebuilding; a started match, reported game or recorded forfeit
+does. Failure rolls back the entire change, including notifications.

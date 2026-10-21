@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -45,23 +47,28 @@ type tournamentGame struct {
 type tournamentNotice struct {
 	ID, Tournament, Guild, Channel, User, Text string
 	Inviter                                    string
+	Announcement                               bool
 	Sent                                       bool
 	Error                                      string
 }
 type tournament struct {
-	ID, Guild, Channel, Title, Prize, Zone, State, Champion string
-	CreatedBy                                               string
-	OrganizerRole                                           string
-	Deadline                                                time.Time
-	Windows                                                 []tournamentWindow
-	SlotMinutes                                             int
-	Size                                                    int
-	Organizers                                              []tournamentOrganizer
-	People                                                  map[string]tournamentPerson
-	Invites                                                 map[string]string // invited Discord id -> inviting Discord id
-	Teams                                                   []tournamentTeam
-	Matches                                                 []tournamentMatch
-	Audit                                                   []string
+	ID, Guild, Channel, Title, Prize, Zone, State, Champion                  string
+	CreatedBy                                                                string
+	OrganizerRole                                                            string
+	Date                                                                     string
+	MatchSequence                                                            int
+	AnnouncementID, AnnouncementChannel, AnnouncementText, AnnouncementError string
+	AnnouncementRetryAt                                                      time.Time
+	Deadline                                                                 time.Time
+	Windows                                                                  []tournamentWindow
+	SlotMinutes                                                              int
+	Size                                                                     int
+	Organizers                                                               []tournamentOrganizer
+	People                                                                   map[string]tournamentPerson
+	Invites                                                                  map[string]string // invited Discord id -> inviting Discord id
+	Teams                                                                    []tournamentTeam
+	Matches                                                                  []tournamentMatch
+	Audit                                                                    []string
 }
 type tournamentData struct {
 	Version     int
@@ -133,7 +140,7 @@ func openTournamentStore(path string) (*tournamentStore, error) {
 			return nil, e
 		}
 		for _, m := range t.Matches {
-			if m.Round < 1 || m.Round > len(t.Windows) || m.Next < -1 || m.Next >= len(t.Matches) {
+			if m.Round < 1 || m.Round > 7 || (m.Round > len(t.Windows) && (m.State == "scheduled" || m.State == "playing")) || m.Next < -1 || m.Next >= len(t.Matches) {
 				return nil, errors.New("invalid stored tournament bracket")
 			}
 		}
@@ -417,26 +424,31 @@ func tournamentConfigure(t *tournament, size int, now time.Time) error {
 		teams[i], teams[j] = teams[j], teams[i]
 	}
 	n := 1
-	rounds := 0
 	for n < len(teams) {
 		n *= 2
-		rounds++
 	}
-	if len(t.Windows) < rounds {
-		return fmt.Errorf("need %d round windows for %d teams; add windows before choosing the format", rounds, len(teams))
-	}
+
 	for i := range teams {
 		teams[i].ID = fmt.Sprintf("T%d", i+1)
 	}
 	t.Size = size
 	t.Teams = teams
+	// Old match IDs must never identify new opponents after a bracket rebuild.
+	for _, m := range t.Matches {
+		if cut := strings.LastIndex(m.ID, "-M"); cut >= 0 {
+			if n, e := strconv.Atoi(m.ID[cut+2:]); e == nil && n > t.MatchSequence {
+				t.MatchSequence = n
+			}
+		}
+	}
 	t.Matches = nil
 	prev := []int{}
 	for round, width := 1, n/2; width > 0; round, width = round+1, width/2 {
 		cur := []int{}
 		for j := 0; j < width; j++ {
 			index := len(t.Matches)
-			t.Matches = append(t.Matches, tournamentMatch{ID: fmt.Sprintf("%s-M%d", t.ID, index+1), Round: round, Next: -1, State: "waiting"})
+			t.MatchSequence++
+			t.Matches = append(t.Matches, tournamentMatch{ID: fmt.Sprintf("%s-M%d", t.ID, t.MatchSequence), Round: round, Next: -1, State: "waiting"})
 			cur = append(cur, index)
 			if round == 1 {
 				if j < len(teams) {
@@ -549,7 +561,7 @@ func tournamentSchedule(d *tournamentData, t *tournament, now time.Time) {
 	}
 	for index := range t.Matches {
 		m := &t.Matches[index]
-		if m.A == "" || m.B == "" || m.State != "waiting" {
+		if m.A == "" || m.B == "" || m.State != "waiting" || m.Round > len(t.Windows) {
 			continue
 		}
 		w := t.Windows[m.Round-1]
@@ -716,4 +728,26 @@ func tournamentAcrossEventsOK(d *tournamentData, t *tournament, m *tournamentMat
 		}
 	}
 	return true
+}
+
+func tournamentRoundCount(t *tournament) int {
+	rounds := 0
+	for _, m := range t.Matches {
+		if m.Round > rounds {
+			rounds = m.Round
+		}
+	}
+	return rounds
+}
+func tournamentDate(t *tournament) string {
+	if len(t.Windows) > 0 {
+		return t.Windows[0].Start.In(mustTournamentZone(t.Zone)).Format("2006-01-02")
+	}
+	return t.Date
+}
+func tournamentPlanningText(t *tournament) string {
+	if len(t.Windows) == 0 {
+		return "Planned date: " + t.Date + " (" + t.Zone + "). Round times will be set after registration."
+	}
+	return fmt.Sprintf("First round <t:%d:F>.", t.Windows[0].Start.Unix())
 }
