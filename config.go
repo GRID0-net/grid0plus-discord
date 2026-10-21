@@ -12,6 +12,11 @@ import (
 // Config is the bot's configuration. Secrets can come from the environment
 // instead of the file, so the file never has to hold them.
 type Config struct {
+	Tournaments struct {
+		// Empty disables tournament commands. A single bot process owns this durable file.
+		StoreFile    string   `yaml:"store_file"`
+		AdminRoleIDs []string `yaml:"admin_role_ids"`
+	} `yaml:"tournaments"`
 	Discord struct {
 		// Token is the bot token (SWITCHNET_DISCORD_TOKEN).
 		Token string `yaml:"token"`

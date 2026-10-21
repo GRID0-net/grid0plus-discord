@@ -17,11 +17,27 @@ type helpCategory struct {
 	// mods and admins say who may see the category at all.
 	mods, admins bool
 	// fest says it exists only when fests are configured.
-	fest    bool
-	entries []helpEntry
+	fest            bool
+	tournament      bool
+	tournamentAdmin bool
+	entries         []helpEntry
 }
 
 var helpCategories = []helpCategory{
+	{key: "tournament", title: "Tournaments", tournament: true, entries: []helpEntry{
+		{"/tournament participate", "Enter with your linked GRID0+ account; optionally invite a teammate."},
+		{"/tournament accept", "Accept or decline an invitation from the DM, here in the server."},
+		{"/tournament availability", "Set your IANA timezone and available local hours."},
+		{"/tournament leave", "Withdraw before registration closes."},
+		{"/tournament status", "Teams, schedules, match/game IDs and delivery status."},
+	}},
+	{key: "tournament-admin", title: "Tournament organizers", tournament: true, tournamentAdmin: true, entries: []helpEntry{
+		{"/tournament-admin create", "Title, prizes, organizers, registration deadline and one window per round."},
+		{"/tournament-admin close", "Close entries and recommend 1v1 or 2v2; format locks teams and the bracket."},
+		{"/tournament-admin schedule", "Find slots that fit players and an organizer; reschedule or unschedule explicitly."},
+		{"/tournament-admin report", "The assigned organizer starts the match and records each best-of-three game."},
+		{"/tournament-admin audit", "Review actions. Undo corrects unused results; withdraw records a forfeit; cancel ends an event."},
+	}},
 	{key: "account", title: "Your GRID0+ account", entries: []helpEntry{
 		{"/register", "Create a GRID0+ account. Your login and password are shown only to you."},
 		{"/link", "Connect a GRID0+ login you had before the bot to your Discord."},
@@ -73,6 +89,12 @@ var helpCategories = []helpCategory{
 }
 
 func (b *Bot) mayRead(c helpCategory, m *discordgo.Member) bool {
+	if c.tournament && b.cfg.Tournaments.StoreFile == "" {
+		return false
+	}
+	if c.tournamentAdmin && !b.tournamentAdmin(m) {
+		return false
+	}
 	if c.fest && !b.cfg.festEnabled() {
 		return false
 	}
@@ -132,7 +154,7 @@ func helpCommand() *discordgo.ApplicationCommand {
 	for _, c := range helpCategories {
 		// Mod categories are left out of the picker, which every member
 		// sees; a mod reaches them with /fest-mod help or /salmon-mod help.
-		if !c.mods && !c.admins {
+		if !c.mods && !c.admins && !c.tournamentAdmin {
 			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{Name: c.title, Value: c.key})
 		}
 	}

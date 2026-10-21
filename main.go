@@ -43,7 +43,17 @@ func main() {
 		lastMint: map[string]time.Time{},
 		fest:     newFestState(),
 	}
+	if cfg.Tournaments.StoreFile != "" {
+		bot.tournaments, err = openTournamentStore(cfg.Tournaments.StoreFile)
+		if err != nil {
+			log.Error("open tournament store", "error", err)
+			os.Exit(1)
+		}
+	}
 	commands := append(commands, helpCommand())
+	if bot.tournaments != nil {
+		commands = append(commands, tournamentCommands()...)
+	}
 	if cfg.festEnabled() {
 		fest, festMod := festCommands()
 		commands = append(commands, fest, festMod, salmonCommand(), salmonModCommand())
@@ -88,6 +98,9 @@ func main() {
 	defer session.Close()
 	activityCtx, cancelActivity := context.WithCancel(context.Background())
 	defer cancelActivity()
+	if bot.tournaments != nil {
+		go bot.runTournamentNotices(activityCtx, session)
+	}
 	// One ready signal per consumer: a buffered channel hands each signal to
 	// only one reader.
 	activityReady, festReady, postsReady, alertsReady := make(chan struct{}, 1), make(chan struct{}, 1), make(chan struct{}, 1), make(chan struct{}, 1)
