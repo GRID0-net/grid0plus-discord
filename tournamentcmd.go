@@ -33,13 +33,14 @@ func tournamentCommands() []*discordgo.ApplicationCommand {
 		sub("match", "Show one match, its players and its next game ID", id(), str("match", "Match ID from the schedule", true)),
 	}}
 	admin := &discordgo.ApplicationCommand{Name: "tournament-admin", Description: "Admins: manage tournaments and best-of-three matches", DefaultMemberPermissions: ptr(int64(discordgo.PermissionAdministrator)), Options: []*discordgo.ApplicationCommandOption{
-		sub("create", "Open registration and announce a tournament", str("title", "Tournament title (max 100 characters)", true), str("date", "First tournament date: YYYY-MM-DD in the organizer timezone", true), str("registration_closes", "YYYY-MM-DD HH:MM in organizer timezone, or RFC3339", true), str("organizers", "Organizer mentions or space-separated Discord IDs; first has scheduling priority", true), str("rounds", "Round windows: YYYY-MM-DD HH:MM/HH:MM; ... (one per elimination round)", true), str("prizes", "Winner/prize description", true), &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionChannel, Name: "channel", Description: "Announcement channel (default this channel)", ChannelTypes: []discordgo.ChannelType{discordgo.ChannelTypeGuildText, discordgo.ChannelTypeGuildNews}}, str("timezone", "Organizer IANA timezone (default Europe/Brussels)", false), integer("slot_minutes", "Reserved minutes per best-of-three match (default 45, 15..180)", false)),
+		sub("create", "Open registration and announce a tournament", str("title", "Tournament title (max 100 characters)", true), str("date", "First tournament date: YYYY-MM-DD in the organizer timezone", true), str("registration_closes", "YYYY-MM-DD HH:MM in organizer timezone, or RFC3339", true), str("organizers", "User mentions/IDs in priority order (or a role mention)", false), str("rounds", "Round windows: YYYY-MM-DD HH:MM/HH:MM; ... (one per elimination round)", true), str("prizes", "Winner/prize description", true), &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionChannel, Name: "channel", Description: "Announcement channel (default this channel)", ChannelTypes: []discordgo.ChannelType{discordgo.ChannelTypeGuildText, discordgo.ChannelTypeGuildNews}}, str("timezone", "Organizer IANA timezone (default Europe/Brussels)", false), integer("slot_minutes", "Reserved minutes per best-of-three match (default 45, 15..180)", false)),
 		sub("close", "Close entry, recheck GRID0+ eligibility, and recommend formats", id()),
 		sub("format", "Lock teams/bracket and schedule matches; 1 or 2 players per side", id(), integer("players_per_team", "1 for 1v1, 2 for 2v2; locked after choosing", true)),
 		sub("window", "Add or extend a round window without displacing booked matches", id(), integer("round", "Round number, starting at 1", true), str("window", "YYYY-MM-DD HH:MM/HH:MM in organizer timezone", true)),
 		sub("organizer", "Set an organizer's actual timezone and available hours", id(), &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionUser, Name: "user", Description: "An organizer named at creation", Required: true}, str("timezone", "IANA timezone", true), integer("from_hour", "First available local hour", true), integer("until_hour", "End local hour, exclusive", true)),
 		sub("schedule", "Schedule all ready matches using current availability", id()),
 		sub("reschedule", "Set a ready match's time and organizer, respecting all availability", id(), str("match", "Match ID", true), str("start", "YYYY-MM-DD HH:MM in organizer timezone, or RFC3339", true), &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionUser, Name: "organizer", Description: "Organizer attending this match", Required: true}),
+		sub("delay", "Delay a scheduled match by ID and notify everyone", str("match", "Match ID", true), integer("minutes", "Minutes to delay (1..10080), counted from now if overdue", true), str("reason", "Reason sent to players and retained in the audit", true), str("tournament", "Optional; inferred from the match ID", false)),
 		sub("unschedule", "Release a scheduled slot so availability can be updated", id(), str("match", "Match ID", true), str("reason", "Why this schedule is being released", true)),
 		sub("undo", "Correct the last game before a later round has used its result", id(), str("match", "Match ID", true), str("reason", "Why the last result is incorrect", true)),
 		sub("start", "Assigned organizer: mark a scheduled match as playing", id(), str("match", "Match ID", true)),
@@ -49,6 +50,19 @@ func tournamentCommands() []*discordgo.ApplicationCommand {
 		sub("retry-notifications", "Retry failed public/DM notifications", id()),
 		sub("audit", "Show recent organizer/admin actions", id()),
 	}}
+	// Required fields must precede optional selectors in Discord's schema.
+	create := admin.Options[0]
+	create.Options = append(create.Options, &discordgo.ApplicationCommandOption{Type: discordgo.ApplicationCommandOptionRole, Name: "organizer_role", Description: "Use current human members of this trusted organizer role"})
+	var required, optional []*discordgo.ApplicationCommandOption
+	for _, o := range create.Options {
+		if o.Required {
+			required = append(required, o)
+		} else {
+			optional = append(optional, o)
+		}
+	}
+	create.Options = append(required, optional...)
+	admin.Options = append(admin.Options, tournamentModifyOptions(str, integer, id, sub, admin.Options))
 	return []*discordgo.ApplicationCommand{user, admin}
 }
 
@@ -154,8 +168,8 @@ func tournamentOrganizerIDs(raw string) ([]string, error) {
 		ids = append(ids, m[1])
 		seen[m[1]] = true
 	}
-	if len(ids) < 1 || len(ids) > 8 {
-		return nil, fmt.Errorf("name between one and eight organizers")
+	if len(ids) < 1 || len(ids) > 32 {
+		return nil, fmt.Errorf("name between one and 32 organizers")
 	}
 	return ids, nil
 }
@@ -165,7 +179,7 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{Type: discordgo.InteractionResponseChannelMessageWithSource, Data: &discordgo.InteractionResponseData{Content: "Tournament commands are not configured on this bot.", Flags: discordgo.MessageFlagsEphemeral}})
 		return
 	}
-	sub, opts := subcommand(i.ApplicationCommandData())
+	sub, opts := tournamentCommand(i.ApplicationCommandData())
 	admin := i.ApplicationCommandData().Name == "tournament-admin"
 	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{Type: discordgo.InteractionResponseDeferredChannelMessageWithSource, Data: &discordgo.InteractionResponseData{Flags: discordgo.MessageFlagsEphemeral}})
 	r := reply{s: s, i: i}
@@ -178,9 +192,37 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 	actor := i.Member.User.ID
 	now := time.Now()
 	id := tournamentValue(opts, "tournament")
+	if admin && sub == "delay" && id == "" {
+		match := tournamentValue(opts, "match")
+		if cut := strings.LastIndex(match, "-M"); cut > 0 {
+			id = match[:cut]
+		}
+	}
+	if admin && sub == "registration" && tournamentValue(opts, "action") == "close" {
+		sub = "close"
+	}
+	var organizerIDs []string
+	organizerRole := ""
+	newChannel := ""
+	if admin && sub == "organizers" {
+		var e error
+		organizerIDs, organizerRole, e = b.tournamentResolveOrganizers(ctx, s, i.GuildID, actor, tournamentValue(opts, "organizers"), tournamentUser(opts, "organizer_role"))
+		if e != nil {
+			r.text(e.Error())
+			return
+		}
+	}
+	if admin && sub == "settings" && opts["channel"] != nil {
+		newChannel = tournamentUser(opts, "channel")
+		ch, e := s.Channel(newChannel, discordgo.WithContext(ctx))
+		if e != nil || ch.GuildID != i.GuildID || (ch.Type != discordgo.ChannelTypeGuildText && ch.Type != discordgo.ChannelTypeGuildNews) {
+			r.text("Announcement channel must be a text channel in this server.")
+			return
+		}
+	}
 	answer := "Saved."
 	if admin && sub == "create" {
-		t, e := b.tournamentCreate(s, i, opts, now)
+		t, e := b.tournamentCreate(ctx, s, i, opts, now)
 		if e != nil {
 			r.text(e.Error())
 			return
@@ -346,6 +388,31 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 			return nil
 		}
 		switch sub {
+		case "settings":
+			if e = tournamentEditSettings(d, t, opts, newChannel, actor, now); e != nil {
+				return e
+			}
+			answer = tournamentSettingsText(t)
+		case "organizers":
+			if e = tournamentSetOrganizers(t, organizerIDs, organizerRole); e != nil {
+				return e
+			}
+			answer = tournamentSettingsText(t)
+			tournamentAddNotice(d, t, "", "Organizer roster updated for **"+t.Title+"**. Existing assignments are preserved.")
+		case "view":
+			answer = tournamentSettingsText(t)
+		case "registration":
+			if tournamentValue(opts, "action") != "open" {
+				return fmt.Errorf("choose open or close")
+			}
+			if t.State != "closed" || len(t.Teams) > 0 {
+				return fmt.Errorf("only closed registration with no locked bracket can reopen")
+			}
+			if !now.Before(t.Deadline) {
+				return fmt.Errorf("set a future registration deadline with modify settings first")
+			}
+			t.State = "registration"
+			tournamentAddNotice(d, t, "", fmt.Sprintf("Registration reopened for **%s** (`%s`) until <t:%d:F>. Enter with /tournament participate.", t.Title, t.ID, t.Deadline.Unix()))
 		case "close":
 			if t.State != "registration" {
 				return fmt.Errorf("registration already closed")
@@ -463,6 +530,12 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 			for _, uid := range append(append(append([]string{}, tournamentPlayers(t, m.A)...), tournamentPlayers(t, m.B)...), m.Organizer) {
 				tournamentAddNotice(d, t, uid, text)
 			}
+		case "delay":
+			if e = tournamentDelay(d, t, tournamentValue(opts, "match"), tournamentInt(opts, "minutes", 0), tournamentValue(opts, "reason"), actor, now); e != nil {
+				return e
+			}
+			index, _ := tournamentFindMatch(t, tournamentValue(opts, "match"))
+			answer = tournamentMatchText(t, t.Matches[index])
 		case "unschedule":
 			index, e := tournamentFindMatch(t, tournamentValue(opts, "match"))
 			if e != nil {
@@ -596,7 +669,7 @@ func (b *Bot) onTournamentCommand(s *discordgo.Session, i *discordgo.Interaction
 	r.text(answer)
 }
 
-func (b *Bot) tournamentCreate(s *discordgo.Session, i *discordgo.InteractionCreate, opts map[string]*discordgo.ApplicationCommandInteractionDataOption, now time.Time) (*tournament, error) {
+func (b *Bot) tournamentCreate(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, opts map[string]*discordgo.ApplicationCommandInteractionDataOption, now time.Time) (*tournament, error) {
 	zone := tournamentValue(opts, "timezone")
 	if zone == "" {
 		zone = "Europe/Brussels"
@@ -623,18 +696,15 @@ func (b *Bot) tournamentCreate(s *discordgo.Session, i *discordgo.InteractionCre
 	if slot < 15 || slot > 180 {
 		return nil, fmt.Errorf("slot_minutes must be between 15 and 180")
 	}
-	ids, e := tournamentOrganizerIDs(tournamentValue(opts, "organizers"))
+	ids, role, e := b.tournamentResolveOrganizers(ctx, s, i.GuildID, i.Member.User.ID, tournamentValue(opts, "organizers"), tournamentUser(opts, "organizer_role"))
 	if e != nil {
 		return nil, e
 	}
 	orgs := []tournamentOrganizer{}
 	for _, id := range ids {
-		m, e := s.GuildMember(i.GuildID, id)
-		if e != nil || m.User == nil || m.User.Bot || !b.tournamentOrganizerAdmin(s, i.GuildID, m) {
-			return nil, fmt.Errorf("every organizer must be a human server member with tournament-admin access")
-		}
 		orgs = append(orgs, tournamentOrganizer{ID: id, Zone: zone, From: 12, Until: 24})
 	}
+
 	title, prize := tournamentValue(opts, "title"), tournamentValue(opts, "prizes")
 	if len([]rune(title)) < 1 || len([]rune(title)) > 100 || len([]rune(prize)) > 1000 {
 		return nil, fmt.Errorf("title must be 1..100 characters; prizes at most 1000")
@@ -647,7 +717,7 @@ func (b *Bot) tournamentCreate(s *discordgo.Session, i *discordgo.InteractionCre
 	if e != nil || ch.GuildID != i.GuildID || (ch.Type != discordgo.ChannelTypeGuildText && ch.Type != discordgo.ChannelTypeGuildNews) {
 		return nil, fmt.Errorf("announcement channel must be a text channel in this server")
 	}
-	t := &tournament{ID: tournamentID(), Guild: i.GuildID, Channel: channel, Title: title, Prize: prize, Zone: zone, State: "registration", CreatedBy: i.Member.User.ID, Deadline: deadline, Windows: windows, SlotMinutes: slot, Organizers: orgs, People: map[string]tournamentPerson{}, Invites: map[string]string{}}
+	t := &tournament{ID: tournamentID(), Guild: i.GuildID, Channel: channel, Title: title, Prize: prize, Zone: zone, State: "registration", CreatedBy: i.Member.User.ID, OrganizerRole: role, Deadline: deadline, Windows: windows, SlotMinutes: slot, Organizers: orgs, People: map[string]tournamentPerson{}, Invites: map[string]string{}}
 	return t, tournamentValidateWindows(t)
 }
 func tournamentValidateWindows(t *tournament) error {

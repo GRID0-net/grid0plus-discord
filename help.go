@@ -32,7 +32,9 @@ var helpCategories = []helpCategory{
 		{"/tournament status", "Teams, schedules, match/game IDs and delivery status."},
 	}},
 	{key: "tournament-admin", title: "Tournament organizers", tournament: true, tournamentAdmin: true, entries: []helpEntry{
-		{"/tournament-admin create", "Title, prizes, organizers, registration deadline and one window per round."},
+		{"/tournament-admin create", "Title, prizes, organizer users or role, registration deadline and round windows."},
+		{"/tournament-admin modify", "Edit details, registration, organizer roster, schedule and results in one group."},
+		{"/tournament-admin modify delay", "Delay a scheduled series using its match ID, minutes and reason; everyone is notified."},
 		{"/tournament-admin close", "Close entries and recommend 1v1 or 2v2; format locks teams and the bracket."},
 		{"/tournament-admin schedule", "Find slots that fit players and an organizer; reschedule or unschedule explicitly."},
 		{"/tournament-admin report", "The assigned organizer starts the match and records each best-of-three game."},
