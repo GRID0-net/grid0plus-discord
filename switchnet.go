@@ -184,6 +184,16 @@ func (c *SwitchNet) ResetPassword(ctx context.Context, discordID, username strin
 	return out, err
 }
 
+// SetPassword stores a password the person chose on one of their own
+// accounts: the one named, or their first.
+func (c *SwitchNet) SetPassword(ctx context.Context, discordID, username, password string) (User, error) {
+	var out User
+	err := c.doJSON(ctx, "POST", "/bot/v1/set-password", discordID, map[string]any{
+		"username": username, "password": password,
+	}, &out)
+	return out, err
+}
+
 // SaveWipe is what GRID0+ answers after wiping a Splatoon 3 cloud save.
 type SaveWipe struct {
 	Login  string `json:"login"`

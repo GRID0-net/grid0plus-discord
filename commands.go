@@ -53,6 +53,12 @@ var commands = []*discordgo.ApplicationCommand{
 		},
 	},
 	{
+		Name: "set-password", Description: "Choose your own GRID0+ password (asks in a private form)",
+		Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionString, Name: "username", Description: "Which of your accounts (default: the one you registered first)", Autocomplete: true},
+		},
+	},
+	{
 		Name: "splatoon-save-wipe", Description: "Wipe your Splatoon 3 cloud save on GRID0+ (asks to confirm; kept as a backup)",
 		Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "username", Description: "Which of your accounts (default: the one you registered first)", Autocomplete: true},
@@ -113,6 +119,10 @@ func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 			b.onFestModal(s, i)
 			return
 		}
+		if strings.HasPrefix(i.ModalSubmitData().CustomID, "setpw:") {
+			b.onSetPasswordSubmit(s, i)
+			return
+		}
 		b.onLinkSubmit(s, i)
 	}
 }
@@ -156,6 +166,11 @@ func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		// A form, not command options: a password typed as an option would
 		// sit in the person's command history.
 		b.showLinkForm(s, i)
+		return
+	}
+	if name == "set-password" {
+		// A form for the same reason as /link.
+		b.showSetPasswordForm(s, i)
 		return
 	}
 	var flags discordgo.MessageFlags
@@ -221,6 +236,7 @@ func (b *Bot) explain(r reply, err error) {
 		"bad_friend_code":     "A friend code is 12 digits, like SW-1234-5678-9012.",
 		"bad_username":        "A login is 2 to 32 characters: lowercase letters, digits, `_` and `.`. Pick another.",
 		"no_cloud_save":       "That account has no Splatoon 3 cloud save on GRID0+, so there's nothing to wipe.",
+		"bad_password":        "A password is 8 to 64 characters, using only what a Switch keyboard can type: letters, digits, spaces and plain punctuation, no accents or emoji.",
 		"save_wipe_disabled":  "Wiping cloud saves isn't turned on on this GRID0+ server.",
 	}
 	for code, msg := range messages {
@@ -491,6 +507,72 @@ func (b *Bot) onLinkSubmit(s *discordgo.Session, i *discordgo.InteractionCreate)
 	r.text("Connected: your Discord is now **" + user.Username + "** on GRID0+. Try `/whoami`.")
 }
 
+// showSetPasswordForm asks for the new password twice. The account named in
+// the command rides along in the form's id; GRID0+ checks it is the caller's.
+func (b *Bot) showSetPasswordForm(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	login := strings.TrimSpace(option(i.ApplicationCommandData(), "username"))
+	input := func(id, label string) discordgo.MessageComponent {
+		return discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.TextInput{CustomID: id, Label: label, Style: discordgo.TextInputShort, Required: true, MinLength: 8, MaxLength: 64},
+		}}
+	}
+	title := "Choose your GRID0+ password"
+	if login != "" {
+		title = "New password for " + short(login)
+	}
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseModal,
+		Data: &discordgo.InteractionResponseData{
+			CustomID:   "setpw:" + login,
+			Title:      title,
+			Components: []discordgo.MessageComponent{input("password", "New password"), input("confirm", "Same password again")},
+		},
+	})
+	if err != nil {
+		b.log.Warn("show set-password form", "error", err)
+	}
+}
+
+func (b *Bot) onSetPasswordSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ModalSubmitData()
+	login := strings.TrimPrefix(data.CustomID, "setpw:")
+	// Not trimmed: spaces at either end are part of a password someone chose.
+	values := map[string]string{}
+	for _, row := range data.Components {
+		if ar, ok := row.(*discordgo.ActionsRow); ok {
+			for _, c := range ar.Components {
+				if ti, ok := c.(*discordgo.TextInput); ok {
+					values[ti.CustomID] = ti.Value
+				}
+			}
+		}
+	}
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Flags: discordgo.MessageFlagsEphemeral},
+	}); err != nil {
+		return
+	}
+	r := reply{s, i}
+	if values["password"] != values["confirm"] {
+		r.text("The two passwords don't match. Run `/set-password` again.")
+		return
+	}
+	if !b.allowMint(i.Member.User.ID, login) {
+		r.text("Slow down a little; try again in half a minute.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	user, err := b.api.SetPassword(ctx, i.Member.User.ID, login, values["password"])
+	if err != nil {
+		b.explain(r, err)
+		return
+	}
+	b.log.Info("password set", "discord", i.Member.User.ID, "login", user.Username)
+	r.text("Done: **" + user.Username + "** now signs in with the password you chose. Your old one no longer works; consoles already signed in stay signed in.")
+}
+
 // onButton handles the accept/decline/cancel buttons from /fc-pending. The
 // person pressing is the one SwitchNet checks, so a button in someone
 // else's message could do nothing on their behalf.
@@ -572,7 +654,7 @@ func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreat
 		}
 		choices = append(choices, &discordgo.ApplicationCommandOptionChoice{Name: name, Value: value})
 	}
-	if data.Name == "reset-password" || data.Name == "splatoon-save-wipe" || data.Name == "splatoon-save-upload" {
+	if data.Name == "reset-password" || data.Name == "set-password" || data.Name == "splatoon-save-wipe" || data.Name == "splatoon-save-upload" {
 		accounts, _ := b.api.Accounts(ctx, i.Member.User.ID)
 		for _, a := range accounts {
 			name := a.Username

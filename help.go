@@ -44,6 +44,7 @@ var helpCategories = []helpCategory{
 		{"/register", "Create a GRID0+ account. Your login and password are shown only to you."},
 		{"/link", "Connect a GRID0+ login you had before the bot to your Discord."},
 		{"/reset-password", "Get a new password, and disconnect your consoles if you want."},
+		{"/set-password", "Choose your own password instead of the generated one."},
 		{"/whoami", "Your friend code, linked consoles and friends."},
 		{"/avatar", "Use your Discord avatar as your Switch profile picture."},
 		{"/splatoon-save-upload", "Replace your Splatoon 3 save on GRID0+ with a save.dat."},
